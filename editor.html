@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atari Strip Poker Image Editor</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #222; color: #eee; display: flex; flex-direction: column; height: 100vh; margin: 0; }
+        header { background: #333; padding: 10px 20px; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; }
+        h1 { margin: 0; font-size: 1.2rem; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 250px; background: #2a2a2a; border-right: 1px solid #444; overflow-y: auto; display: flex; flex-direction: column; }
+        .file-list { list-style: none; padding: 0; margin: 0; }
+        .file-item { padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #333; display: flex; justify-content: space-between; font-size: 0.9rem; }
+        .file-item:hover { background: #3a3a3a; }
+        .file-item.active { background: #005a9e; color: white; }
+        .file-item .size { font-size: 0.75rem; color: #aaa; }
+        .editor-area { flex: 1; padding: 20px; display: flex; flex-direction: column; align-items: center; overflow-y: auto; }
+        .canvas-container { border: 2px solid #555; box-shadow: 0 0 20px rgba(0,0,0,0.5); position: relative; }
+        canvas { display: block; image-rendering: pixelated; }
+        .toolbar { margin-top: 15px; display: flex; gap: 10px; background: #333; padding: 10px; border-radius: 5px; }
+        button { background: #444; border: 1px solid #555; color: white; padding: 5px 15px; cursor: pointer; border-radius: 3px; }
+        button:hover { background: #555; }
+        button.primary { background: #005a9e; border-color: #004578; }
+        button.primary:hover { background: #004578; }
+        input[type="file"] { display: none; }
+        .palette { display: flex; gap: 5px; margin-top: 10px; }
+        .swatch { width: 30px; height: 30px; border: 2px solid #555; cursor: pointer; }
+        .swatch.selected { border-color: white; transform: scale(1.1); }
+        .status { margin-left: 10px; font-size: 0.8rem; color: #aaa; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div style="display:flex; align-items:center">
+        <h1>Atari Image Editor</h1>
+        <span id="status" class="status">Waiting for ATR file...</span>
+    </div>
+    <div>
+        <button onclick="document.getElementById('atrInput').click()">Load ATR</button>
+        <button class="primary" onclick="saveAtr()">Download Modified ATR</button>
+        <input type="file" id="atrInput" accept=".atr" onchange="loadAtr(this.files[0])">
+    </div>
+</header>
+
+<div class="main-container">
+    <div class="sidebar">
+        <ul id="fileList" class="file-list">
+            <!-- Files will go here -->
+        </ul>
+    </div>
+    <div class="editor-area">
+        <div id="editorControls" style="display:none; flex-direction: column; align-items: center;">
+            <div class="canvas-container">
+                <canvas id="editorCanvas" width="160" height="140"></canvas>
+            </div>
+            
+            <div class="palette">
+                <!-- Atari Mode 15 Palette -->
+                <div class="swatch" style="background-color: rgb(0,0,0)" onclick="setColor(0)" title="Color 0 (Black)"></div>
+                <div class="swatch" style="background-color: rgb(255,180,140)" onclick="setColor(1)" title="Color 1 (Peach)"></div>
+                <div class="swatch" style="background-color: rgb(80,80,255)" onclick="setColor(2)" title="Color 2 (Blue)"></div>
+                <div class="swatch" style="background-color: rgb(255,255,255)" onclick="setColor(3)" title="Color 3 (White)"></div>
+            </div>
+
+            <div class="toolbar">
+                <label>
+                    <button onclick="document.getElementById('pngInput').click()">Import PNG</button>
+                    <input type="file" id="pngInput" accept="image/png" onchange="importPng(this.files[0])">
+                </label>
+                <button onclick="clearCanvas()">Clear</button>
+                <button class="primary" onclick="commitChanges()">Update File in Disk</button>
+            </div>
+            <p style="font-size: 0.8rem; color: #888; max-width: 400px; text-align: center; margin-top: 10px;">
+                "Update File in Disk" modifies the memory buffer. Click "Download Modified ATR" to save the final file to your computer.
+            </p>
+        </div>
+        <div id="placeholder" style="margin-top: 100px; color: #666;">
+            Select a file from the list to edit.
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Global State ---
+    let atrBuffer = null;
+    let diskFiles = [];
+    let currentFile = null;
+    let currentColor = 1;
+    let isDrawing = false;
+    
+    // Atari Mode 15 Palette
+    const PALETTE = [
+        {r: 0, g: 0, b: 0},       // 00
+        {r: 255, g: 180, b: 140}, // 01
+        {r: 80, g: 80, b: 255},   // 10
+        {r: 255, g: 255, b: 255}  // 11
+    ];
+
+    // --- ATR / DOS 2.0 Helpers ---
+    const SECTOR_SIZE = 128;
+    const HEADER_SIZE = 16;
+    
+    function readSector(secNum) {
+        const offset = HEADER_SIZE + (secNum - 1) * SECTOR_SIZE;
+        return atrBuffer.slice(offset, offset + SECTOR_SIZE);
+    }
+
+    function writeSector(secNum, data) {
+        const offset = HEADER_SIZE + (secNum - 1) * SECTOR_SIZE;
+        atrBuffer.set(data, offset);
+    }
+
+    function parseDirectory() {
+        diskFiles = [];
+        // DOS 2.0 Directory starts at sector 361, length 8 sectors
+        const DIR_START = 361;
+        const DIR_LEN = 8;
+        
+        for(let i=0; i<DIR_LEN; i++) {
+            const sec = readSector(DIR_START + i);
+            for(let entry=0; entry<SECTOR_SIZE; entry+=16) {
+                const flag = sec[entry];
+                if(flag === 0 || flag === 0x80) continue; // Deleted or empty
+                
+                const cnt = sec[entry+1] | (sec[entry+2] << 8); // Sector count
+                // DOS 2 stores Start Sector at 0x03 (Little Endian)
+                const startSec = sec[entry+3] | (sec[entry+4] << 8);
+                
+                let name = "";
+                for(let j=5; j<13; j++) name += String.fromCharCode(sec[entry+j] & 0x7F);
+                let ext = "";
+                for(let j=13; j<16; j++) ext += String.fromCharCode(sec[entry+j] & 0x7F);
+                
+                name = name.trim();
+                ext = ext.trim();
+                const fullname = ext ? `${name}.${ext}` : name;
+                
+                diskFiles.push({
+                    name: fullname,
+                    startSector: startSec,
+                    sectorCount: cnt,
+                    flag: flag
+                });
+            }
+        }
+        renderFileList();
+    }
+
+    function getFileChain(startSector) {
+        const chain = [];
+        let curr = startSector;
+        // Safety limit
+        let limit = 720; 
+        
+        while(curr !== 0 && limit-- > 0) {
+            chain.push(curr);
+            const sec = readSector(curr);
+            // Link is last 3 bytes
+            // Byte 125: (fileNo << 2) | (nextHigh)
+            const linkByte = sec[125];
+            const nextLow = sec[126];
+            // byteCount = sec[127];
+            
+            const nextHigh = linkByte & 0x03;
+            curr = (nextHigh << 8) | nextLow;
+        }
+        return chain;
+    }
+
+    function readFileData(file) {
+        const chain = getFileChain(file.startSector);
+        let bytes = [];
+        
+        for(let secNum of chain) {
+            const sec = readSector(secNum);
+            const count = sec[127]; // Byte count stored in last byte
+            // Data is 0..count
+            for(let i=0; i<count; i++) bytes.push(sec[i]);
+        }
+        return new Uint8Array(bytes);
+    }
+    
+    function writeFileData(file, data) {
+        if (data.length !== 5605) {
+            alert(`Error: Data length mismatch. Expected 5605, got ${data.length}. Cannot save to prevent disk corruption.`);
+            return false;
+        }
+
+        const chain = getFileChain(file.startSector);
+        let dataIdx = 0;
+        
+        for(let secNum of chain) {
+            const sec = readSector(secNum);
+            // Preserve link bytes (last 3)
+            const count = sec[127]; 
+            
+            // Overwrite data payload
+            for(let i=0; i<count; i++) {
+                if (dataIdx < data.length) {
+                    sec[i] = data[dataIdx++];
+                } else {
+                    sec[i] = 0; // Pad if smaller (shouldn't happen with strict check)
+                }
+            }
+            writeSector(secNum, sec);
+        }
+        return true;
+    }
+
+    // --- Encryption / Decryption ---
+    
+    function getBestSeed(data) {
+        // Brute force seed finding: Look for solid colors (00, 55, AA, FF)
+        let bestSeed = 0;
+        let bestScore = -1;
+        
+        // Sample first 200 bytes
+        const sampleLen = Math.min(200, data.length);
+        
+        for(let seed=0; seed<256; seed++) {
+            let solidCount = 0;
+            let s = seed;
+            for(let i=0; i<sampleLen; i++) {
+                const val = data[i] ^ s;
+                if(val === 0x00 || val === 0x55 || val === 0xAA || val === 0xFF) solidCount++;
+                s = (s + 1) & 0xFF;
+            }
+            if (solidCount > bestScore) {
+                bestScore = solidCount;
+                bestSeed = seed;
+            }
+        }
+        return bestSeed;
+    }
+    
+    function processData(data, seed) {
+        // XOR with incrementing seed (Symmetric)
+        const out = new Uint8Array(data.length);
+        let s = seed;
+        for(let i=0; i<data.length; i++) {
+            out[i] = data[i] ^ s;
+            s = (s + 1) & 0xFF;
+        }
+        return out;
+    }
+
+    // --- UI Logic ---
+
+    function loadAtr(file) {
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            atrBuffer = new Uint8Array(e.target.result);
+            parseDirectory();
+            document.getElementById('status').textContent = `Loaded ${file.name} (${atrBuffer.length} bytes)`;
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function renderFileList() {
+        const list = document.getElementById('fileList');
+        list.innerHTML = "";
+        
+        diskFiles.forEach(f => {
+            // Only show likely image files
+            const isImage = (f.name.startsWith('OP') || f.name === 'TITLE2') && (f.sectorCount > 40); 
+            
+            const li = document.createElement('li');
+            li.className = 'file-item' + (isImage ? '' : ' disabled');
+            li.style.opacity = isImage ? 1 : 0.5;
+            li.innerHTML = `<span>${f.name}</span> <span class="size">Sec: ${f.startSector}</span>`;
+            li.onclick = () => {
+                if(isImage) selectFile(f);
+            };
+            list.appendChild(li);
+        });
+    }
+
+    function selectFile(file) {
+        // Highlight in list
+        document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+        // (Simple hack finding element by text content would be better but loops work)
+        
+        currentFile = file;
+        const rawData = readFileData(file);
+        
+        // Determine Seed
+        let seed = 0;
+        if(file.name === "OPP") seed = 0; // Unencrypted
+        else {
+            seed = getBestSeed(rawData);
+            console.log(`Detected seed for ${file.name}: 0x${seed.toString(16)}`);
+        }
+        
+        currentFile.seed = seed; // Store detected seed
+        
+        const decrypted = processData(rawData, seed);
+        renderImageToCanvas(decrypted);
+        
+        document.getElementById('editorControls').style.display = 'flex';
+        document.getElementById('placeholder').style.display = 'none';
+        document.getElementById('status').textContent = `Editing ${file.name} (Seed: 0x${seed.toString(16).toUpperCase()})`;
+    }
+
+    function renderImageToCanvas(data) {
+        const cvs = document.getElementById('editorCanvas');
+        const ctx = cvs.getContext('2d');
+        const imgData = ctx.createImageData(160, 140);
+        
+        // Mode 15: 160x140? 
+        // File size 5605. 5600 bytes = 160x140 (4 pixels/byte).
+        // 5605 bytes. We process all bytes but map to 160 width.
+        
+        for(let i=0; i<data.length; i++) {
+            const byte = data[i];
+            const p0 = (byte >> 6) & 0x03;
+            const p1 = (byte >> 4) & 0x03;
+            const p2 = (byte >> 2) & 0x03;
+            const p3 = byte & 0x03;
+            
+            const pixels = [p0, p1, p2, p3];
+            
+            // Calc X, Y
+            // 4 pixels per byte
+            const baseX = (i * 4) % 160;
+            const y = Math.floor((i * 4) / 160);
+            
+            if(y >= 140) break; // Ignore padding at end
+            
+            for(let p=0; p<4; p++) {
+                const color = PALETTE[pixels[p]];
+                const idx = (y * 160 + baseX + p) * 4;
+                imgData.data[idx] = color.r;
+                imgData.data[idx+1] = color.g;
+                imgData.data[idx+2] = color.b;
+                imgData.data[idx+3] = 255;
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+    
+    function canvasToBinary() {
+        const cvs = document.getElementById('editorCanvas');
+        const ctx = cvs.getContext('2d');
+        const imgData = ctx.getImageData(0, 0, 160, 140);
+        
+        // Exact size constraint: 5605 bytes
+        const out = new Uint8Array(5605);
+        
+        let byteIdx = 0;
+        for(let i=0; i<imgData.data.length; i+=16) { // 4 pixels * 4 components = 16
+            // Process 4 pixels at a time to form 1 byte
+            let byteVal = 0;
+            
+            for(let p=0; p<4; p++) {
+                const r = imgData.data[i + p*4];
+                const g = imgData.data[i + p*4 + 1];
+                const b = imgData.data[i + p*4 + 2];
+                
+                // Map to palette
+                const cIdx = getClosestColor(r, g, b);
+                byteVal |= (cIdx << (6 - p*2));
+            }
+            
+            if(byteIdx < 5605) {
+                out[byteIdx++] = byteVal;
+            }
+        }
+        
+        // Note: The loop covers 160*140 pixels = 22400 pixels / 4 = 5600 bytes.
+        // We need 5605 bytes.
+        // We need to preserve the last 5 bytes from the original file if possible, or just pad with 0.
+        // Or if the canvas doesn't represent them, just leave them as 0 (encrypted 0).
+        // Best approach: Read original data and copy the tail?
+        // Since we don't have original data easily accessible here without re-read, let's just pad with 0.
+        // Wait, "Padding" in Mode 15 usually is 0.
+        
+        return out;
+    }
+
+    function getClosestColor(r, g, b) {
+        let minD = Infinity;
+        let idx = 0;
+        PALETTE.forEach((c, i) => {
+            const d = (r-c.r)**2 + (g-c.g)**2 + (b-c.b)**2;
+            if(d < minD) { minD = d; idx = i; }
+        });
+        return idx;
+    }
+
+    // --- Editor Actions ---
+
+    function setColor(idx) {
+        currentColor = idx;
+        document.querySelectorAll('.swatch').forEach((el, i) => {
+            el.classList.toggle('selected', i === idx);
+        });
+    }
+    
+    function clearCanvas() {
+        const ctx = document.getElementById('editorCanvas').getContext('2d');
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, 160, 140);
+    }
+
+    // Drawing Logic
+    const canvas = document.getElementById('editorCanvas');
+    canvas.addEventListener('mousedown', e => { isDrawing = true; draw(e); });
+    canvas.addEventListener('mousemove', e => { if(isDrawing) draw(e); });
+    canvas.addEventListener('mouseup', () => isDrawing = false);
+    canvas.addEventListener('mouseleave', () => isDrawing = false);
+
+    function draw(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = Math.floor((e.clientX - rect.left) * scaleX);
+        const y = Math.floor((e.clientY - rect.top) * scaleY);
+        
+        const ctx = canvas.getContext('2d');
+        const c = PALETTE[currentColor];
+        ctx.fillStyle = `rgb(${c.r},${c.g},${c.b})`;
+        ctx.fillRect(x, y, 1, 1);
+    }
+    
+    function importPng(file) {
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                const ctx = canvas.getContext('2d');
+                // Resize to fit
+                ctx.drawImage(img, 0, 0, 160, 140);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function commitChanges() {
+        if(!currentFile) return;
+        
+        const rawData = canvasToBinary();
+        
+        // Re-encrypt
+        const encrypted = processData(rawData, currentFile.seed);
+        
+        // Save to buffer
+        if(writeFileData(currentFile, encrypted)) {
+             document.getElementById('status').textContent = `Updated ${currentFile.name} in memory. Don't forget to Download ATR!`;
+             alert(`Successfully updated ${currentFile.name} in the disk buffer.`);
+        }
+    }
+
+    function saveAtr() {
+        if(!atrBuffer) return;
+        const blob = new Blob([atrBuffer], {type: "application/octet-stream"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "StripPoker_Modified.atr";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+    
+    // Init
+    setColor(1);
+
+</script>
+</body>
+</html>

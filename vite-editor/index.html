@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Atari Strip Poker Image Editor</title>
+  </head>
+  <body>
+    <header>
+      <div style="display:flex; align-items:center">
+          <h1>Atari Image Editor</h1>
+          <span id="status" class="status">Waiting for ATR file...</span>
+      </div>
+      <div>
+          <button id="loadAtrBtn">Load ATR</button>
+          <button id="saveAtrBtn" class="primary">Download Modified ATR</button>
+          <input type="file" id="atrInput" accept=".atr" style="display:none">
+      </div>
+    </header>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <ul id="fileList" class="file-list">
+                <!-- Files will go here -->
+            </ul>
+        </div>
+        <div class="editor-area">
+            <div id="editorControls" style="display:none; flex-direction: column; align-items: center;">
+                <div class="canvas-container">
+                    <canvas id="editorCanvas" width="160" height="140"></canvas>
+                </div>
+                
+                <div class="palette">
+                    <!-- Atari Mode 15 Palette -->
+                    <div class="swatch" data-color="0" style="background-color: rgb(0,0,0)" title="Color 0 (Black)"></div>
+                    <div class="swatch" data-color="1" style="background-color: rgb(255,180,140)" title="Color 1 (Peach)"></div>
+                    <div class="swatch" data-color="2" style="background-color: rgb(80,80,255)" title="Color 2 (Blue)"></div>
+                    <div class="swatch" data-color="3" style="background-color: rgb(255,255,255)" title="Color 3 (White)"></div>
+                </div>
+
+                <div class="toolbar">
+                    <label>
+                        <button id="importPngBtn">Import PNG</button>
+                        <input type="file" id="pngInput" accept="image/png" style="display:none">
+                    </label>
+                    <button id="clearBtn">Clear</button>
+                    <button id="commitBtn" class="primary">Update File in Disk</button>
+                </div>
+                <p style="font-size: 0.8rem; color: #888; max-width: 400px; text-align: center; margin-top: 10px;">
+                    "Update File in Disk" modifies the memory buffer. Click "Download Modified ATR" to save the final file to your computer.
+                </p>
+            </div>
+            <div id="placeholder" style="margin-top: 100px; color: #666;">
+                Select a file from the list to edit.
+            </div>
+        </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
