@@ -4,6 +4,7 @@ import './style.css';
 let atrBuffer = null;
 let diskFiles = [];
 let currentFile = null;
+let currentFileOriginalData = null; // Store original decrypted data to preserve trailing bytes
 let currentColor = 1;
 let isDrawing = false;
 
@@ -172,6 +173,10 @@ function selectFile(file) {
     let seed = file.name === "OPP" ? 0 : getBestSeed(rawData);
     currentFile.seed = seed;
     const decrypted = processData(rawData, seed);
+
+    // Store original decrypted data to preserve trailing bytes
+    currentFileOriginalData = new Uint8Array(decrypted);
+
     renderImageToCanvas(decrypted);
     document.getElementById('editorControls').style.display = 'flex';
     document.getElementById('placeholder').style.display = 'none';
@@ -205,8 +210,8 @@ function renderImageToCanvas(data) {
 }
 
 function canvasToBinary() {
-    if (!currentFile || !currentFile.originalSize) {
-        alert('Error: No file loaded or file size unknown.');
+    if (!currentFile || !currentFile.originalSize || !currentFileOriginalData) {
+        alert('Error: No file loaded or original data missing.');
         return null;
     }
 
@@ -219,6 +224,7 @@ function canvasToBinary() {
     const out = new Uint8Array(fileSize);
     let byteIdx = 0;
 
+    // Convert canvas pixels to binary (160x140 = 5600 bytes)
     for(let i=0; i<imgData.data.length; i+=16) {
         let byteVal = 0;
         for(let p=0; p<4; p++) {
@@ -235,9 +241,11 @@ function canvasToBinary() {
         if(byteIdx < fileSize) out[byteIdx++] = byteVal;
     }
 
-    // Fill any remaining bytes with zeros (should only happen for 5605-byte files)
+    // Preserve any trailing bytes from the original file (e.g., 5 extra bytes in OP1.x files)
+    // This is critical to maintain file integrity!
     while(byteIdx < fileSize) {
-        out[byteIdx++] = 0;
+        out[byteIdx] = currentFileOriginalData[byteIdx];
+        byteIdx++;
     }
 
     return out;
