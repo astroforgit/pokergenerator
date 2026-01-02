@@ -84,27 +84,40 @@ function readFileData(file) {
     let bytes = [];
     for(let secNum of chain) {
         const sec = readSector(secNum);
-        const count = sec[127]; 
+        const count = sec[127];
         for(let i=0; i<count; i++) bytes.push(sec[i]);
     }
-    return new Uint8Array(bytes);
+    const fileData = new Uint8Array(bytes);
+    // Store original file size for later validation
+    file.originalSize = fileData.length;
+    return fileData;
 }
 
 function writeFileData(file, data) {
-    if (data.length !== 5605) {
-        alert(`Error: Data length mismatch. Expected 5605, got ${data.length}.`);
+    // Validate that new data matches original file size exactly
+    const expectedSize = file.originalSize || 5605;
+    if (data.length !== expectedSize) {
+        alert(`Error: Data length mismatch. Expected ${expectedSize} bytes, got ${data.length} bytes.\nFile: ${file.name}`);
         return false;
     }
+
     const chain = getFileChain(file.startSector);
     let dataIdx = 0;
     for(let secNum of chain) {
         const sec = readSector(secNum);
-        const count = sec[127]; 
+        const count = sec[127];
         for(let i=0; i<count; i++) {
             if (dataIdx < data.length) sec[i] = data[dataIdx++];
         }
         writeSector(secNum, sec);
     }
+
+    // Verify all data was written
+    if (dataIdx !== data.length) {
+        alert(`Warning: Only wrote ${dataIdx} of ${data.length} bytes!`);
+        return false;
+    }
+
     return true;
 }
 
@@ -162,7 +175,7 @@ function selectFile(file) {
     renderImageToCanvas(decrypted);
     document.getElementById('editorControls').style.display = 'flex';
     document.getElementById('placeholder').style.display = 'none';
-    document.getElementById('status').textContent = `Editing ${file.name} (Seed: 0x${seed.toString(16).toUpperCase()})`;
+    document.getElementById('status').textContent = `Editing ${file.name} (${file.originalSize} bytes, Seed: 0x${seed.toString(16).toUpperCase()})`;
 }
 
 function renderImageToCanvas(data) {
@@ -192,11 +205,20 @@ function renderImageToCanvas(data) {
 }
 
 function canvasToBinary() {
+    if (!currentFile || !currentFile.originalSize) {
+        alert('Error: No file loaded or file size unknown.');
+        return null;
+    }
+
     const cvs = document.getElementById('editorCanvas');
     const ctx = cvs.getContext('2d');
     const imgData = ctx.getImageData(0, 0, 160, 140);
-    const out = new Uint8Array(5605);
+
+    // Use the original file size to ensure exact match
+    const fileSize = currentFile.originalSize;
+    const out = new Uint8Array(fileSize);
     let byteIdx = 0;
+
     for(let i=0; i<imgData.data.length; i+=16) {
         let byteVal = 0;
         for(let p=0; p<4; p++) {
@@ -210,8 +232,14 @@ function canvasToBinary() {
             });
             byteVal |= (idx << (6 - p*2));
         }
-        if(byteIdx < 5605) out[byteIdx++] = byteVal;
+        if(byteIdx < fileSize) out[byteIdx++] = byteVal;
     }
+
+    // Fill any remaining bytes with zeros (should only happen for 5605-byte files)
+    while(byteIdx < fileSize) {
+        out[byteIdx++] = 0;
+    }
+
     return out;
 }
 
@@ -248,8 +276,11 @@ document.getElementById('clearBtn').addEventListener('click', () => {
 document.getElementById('commitBtn').addEventListener('click', () => {
     if(!currentFile) return;
     const rawData = canvasToBinary();
+    if (!rawData) return; // Error already shown by canvasToBinary
     const encrypted = processData(rawData, currentFile.seed);
-    if(writeFileData(currentFile, encrypted)) alert(`Updated ${currentFile.name} in memory.`);
+    if(writeFileData(currentFile, encrypted)) {
+        alert(`✓ Updated ${currentFile.name} in memory.\nSize: ${rawData.length} bytes\nNow click "Save ATR" to download.`);
+    }
 });
 
 document.getElementById('importPngBtn').addEventListener('click', () => document.getElementById('pngInput').click());
