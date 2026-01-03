@@ -1,5 +1,5 @@
 import './style.css';
-import { getEmbeddedATR, ATR_FILENAME } from './embedded-atr.js';
+import { getEmbeddedATR, ATR_FILENAME, EDITABLE_TEXTS, EMBEDDED_ATR_DATA } from './embedded-atr-binary.js';
 
 // --- Global State ---
 let atrBuffer = null;
@@ -9,6 +9,7 @@ let currentFileOriginalData = null; // Store original decrypted data to preserve
 let currentColor = 0;
 let isDrawing = false;
 let importedImage = null; // Store imported image for processing
+let importedImageMode = 'fit'; // Store current resize mode
 let cropRect = { x: 0, y: 0, width: 160, height: 140 }; // Crop rectangle
 
 // Atari Mode 15 Palette (NTSC - Hue 1 Orange/Gold tones)
@@ -274,48 +275,154 @@ function getClosestPaletteColor(r, g, b) {
     return bestColor;
 }
 
-function convertTo4Colors(imageData) {
-    // Floyd-Steinberg dithering for better quality
+// Apply brightness, contrast, and saturation adjustments
+function adjustImageData(imageData, brightness, contrast, saturation) {
+    const data = imageData.data;
+    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+    for (let i = 0; i < data.length; i += 4) {
+        let r = data[i];
+        let g = data[i + 1];
+        let b = data[i + 2];
+
+        // Apply brightness
+        r += brightness;
+        g += brightness;
+        b += brightness;
+
+        // Apply contrast
+        r = factor * (r - 128) + 128;
+        g = factor * (g - 128) + 128;
+        b = factor * (b - 128) + 128;
+
+        // Apply saturation
+        const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
+        r = gray + saturation * (r - gray);
+        g = gray + saturation * (g - gray);
+        b = gray + saturation * (b - gray);
+
+        // Clamp values
+        data[i] = Math.max(0, Math.min(255, r));
+        data[i + 1] = Math.max(0, Math.min(255, g));
+        data[i + 2] = Math.max(0, Math.min(255, b));
+    }
+
+    return imageData;
+}
+
+// Dithering algorithms
+function convertTo4Colors(imageData, algorithm = 'floyd-steinberg') {
     const width = imageData.width;
     const height = imageData.height;
     const data = new Uint8ClampedArray(imageData.data);
 
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const idx = (y * width + x) * 4;
-            const oldR = data[idx];
-            const oldG = data[idx + 1];
-            const oldB = data[idx + 2];
+    if (algorithm === 'none') {
+        // No dithering - simple nearest color
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const idx = (y * width + x) * 4;
+                const newColor = getClosestPaletteColor(data[idx], data[idx + 1], data[idx + 2]);
+                data[idx] = newColor.r;
+                data[idx + 1] = newColor.g;
+                data[idx + 2] = newColor.b;
+            }
+        }
+    } else if (algorithm === 'floyd-steinberg') {
+        // Floyd-Steinberg dithering
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const idx = (y * width + x) * 4;
+                const oldR = data[idx];
+                const oldG = data[idx + 1];
+                const oldB = data[idx + 2];
 
-            // Find closest palette color
-            const newColor = getClosestPaletteColor(oldR, oldG, oldB);
+                const newColor = getClosestPaletteColor(oldR, oldG, oldB);
+                data[idx] = newColor.r;
+                data[idx + 1] = newColor.g;
+                data[idx + 2] = newColor.b;
 
-            // Set new color
-            data[idx] = newColor.r;
-            data[idx + 1] = newColor.g;
-            data[idx + 2] = newColor.b;
+                const errR = oldR - newColor.r;
+                const errG = oldG - newColor.g;
+                const errB = oldB - newColor.b;
 
-            // Calculate error
-            const errR = oldR - newColor.r;
-            const errG = oldG - newColor.g;
-            const errB = oldB - newColor.b;
+                const distributeError = (dx, dy, factor) => {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                        const nidx = (ny * width + nx) * 4;
+                        data[nidx] = Math.max(0, Math.min(255, data[nidx] + errR * factor));
+                        data[nidx + 1] = Math.max(0, Math.min(255, data[nidx + 1] + errG * factor));
+                        data[nidx + 2] = Math.max(0, Math.min(255, data[nidx + 2] + errB * factor));
+                    }
+                };
 
-            // Distribute error to neighboring pixels (Floyd-Steinberg)
-            const distributeError = (dx, dy, factor) => {
-                const nx = x + dx;
-                const ny = y + dy;
-                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                    const nidx = (ny * width + nx) * 4;
-                    data[nidx] = Math.max(0, Math.min(255, data[nidx] + errR * factor));
-                    data[nidx + 1] = Math.max(0, Math.min(255, data[nidx + 1] + errG * factor));
-                    data[nidx + 2] = Math.max(0, Math.min(255, data[nidx + 2] + errB * factor));
-                }
-            };
+                distributeError(1, 0, 7/16);
+                distributeError(-1, 1, 3/16);
+                distributeError(0, 1, 5/16);
+                distributeError(1, 1, 1/16);
+            }
+        }
+    } else if (algorithm === 'atkinson') {
+        // Atkinson dithering (used by original Mac)
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const idx = (y * width + x) * 4;
+                const oldR = data[idx];
+                const oldG = data[idx + 1];
+                const oldB = data[idx + 2];
 
-            distributeError(1, 0, 7/16);
-            distributeError(-1, 1, 3/16);
-            distributeError(0, 1, 5/16);
-            distributeError(1, 1, 1/16);
+                const newColor = getClosestPaletteColor(oldR, oldG, oldB);
+                data[idx] = newColor.r;
+                data[idx + 1] = newColor.g;
+                data[idx + 2] = newColor.b;
+
+                const errR = oldR - newColor.r;
+                const errG = oldG - newColor.g;
+                const errB = oldB - newColor.b;
+
+                const distributeError = (dx, dy, factor) => {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                        const nidx = (ny * width + nx) * 4;
+                        data[nidx] = Math.max(0, Math.min(255, data[nidx] + errR * factor));
+                        data[nidx + 1] = Math.max(0, Math.min(255, data[nidx + 1] + errG * factor));
+                        data[nidx + 2] = Math.max(0, Math.min(255, data[nidx + 2] + errB * factor));
+                    }
+                };
+
+                // Atkinson distributes 6/8 of error (loses 2/8)
+                distributeError(1, 0, 1/8);
+                distributeError(2, 0, 1/8);
+                distributeError(-1, 1, 1/8);
+                distributeError(0, 1, 1/8);
+                distributeError(1, 1, 1/8);
+                distributeError(0, 2, 1/8);
+            }
+        }
+    } else if (algorithm === 'ordered') {
+        // Ordered (Bayer) dithering with 4x4 matrix
+        const bayerMatrix = [
+            [0, 8, 2, 10],
+            [12, 4, 14, 6],
+            [3, 11, 1, 9],
+            [15, 7, 13, 5]
+        ];
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const idx = (y * width + x) * 4;
+                const threshold = (bayerMatrix[y % 4][x % 4] / 16 - 0.5) * 64;
+
+                const r = Math.max(0, Math.min(255, data[idx] + threshold));
+                const g = Math.max(0, Math.min(255, data[idx + 1] + threshold));
+                const b = Math.max(0, Math.min(255, data[idx + 2] + threshold));
+
+                const newColor = getClosestPaletteColor(r, g, b);
+                data[idx] = newColor.r;
+                data[idx + 1] = newColor.g;
+                data[idx + 2] = newColor.b;
+            }
         }
     }
 
@@ -323,73 +430,70 @@ function convertTo4Colors(imageData) {
     return imageData;
 }
 
-function resizeImage(img, mode) {
+function applyImageAdjustmentsAndDither() {
+    if (!importedImage) return;
+
+    // Re-draw the original image first (without adjustments)
     const canvas = document.getElementById('importCanvas');
     const ctx = canvas.getContext('2d');
 
-    // Enable image smoothing for better quality resize
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-
-    // Clear canvas
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, 160, 140);
 
-    if (mode === 'fit') {
-        // Fit: maintain aspect ratio, may have letterboxing
-        const scale = Math.min(160 / img.width, 140 / img.height);
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
+    // Re-apply the current mode (fit/fill/crop)
+    if (importedImageMode === 'crop') {
+        const srcX = Math.max(0, Math.round((importedImage.width - 160) / 2));
+        const srcY = Math.max(0, Math.round((importedImage.height - 140) / 2));
+        const srcW = Math.min(160, importedImage.width);
+        const srcH = Math.min(140, importedImage.height);
+        const dstX = Math.max(0, Math.round((160 - srcW) / 2));
+        const dstY = Math.max(0, Math.round((140 - srcH) / 2));
+        ctx.drawImage(importedImage, srcX, srcY, srcW, srcH, dstX, dstY, srcW, srcH);
+    } else if (importedImageMode === 'fit') {
+        const scale = Math.min(160 / importedImage.width, 140 / importedImage.height);
+        const w = Math.round(importedImage.width * scale);
+        const h = Math.round(importedImage.height * scale);
         const x = Math.round((160 - w) / 2);
         const y = Math.round((140 - h) / 2);
-
-        ctx.drawImage(img, x, y, w, h);
-    } else {
-        // Fill: cover entire canvas, may crop
-        const scale = Math.max(160 / img.width, 140 / img.height);
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
+        ctx.drawImage(importedImage, x, y, w, h);
+    } else { // fill
+        const scale = Math.max(160 / importedImage.width, 140 / importedImage.height);
+        const w = Math.round(importedImage.width * scale);
+        const h = Math.round(importedImage.height * scale);
         const x = Math.round((160 - w) / 2);
         const y = Math.round((140 - h) / 2);
-
-        ctx.drawImage(img, x, y, w, h);
+        ctx.drawImage(importedImage, x, y, w, h);
     }
 
-    // Convert to 4 colors with dithering
+    // Get adjustment values
+    const brightness = parseInt(document.getElementById('brightnessSlider').value);
+    const contrast = parseInt(document.getElementById('contrastSlider').value);
+    const saturation = parseInt(document.getElementById('saturationSlider').value) / 100;
+    const algorithm = document.getElementById('ditheringAlgorithm').value;
+
+    // Get current image data
     let imgData = ctx.getImageData(0, 0, 160, 140);
-    imgData = convertTo4Colors(imgData);
+
+    // Apply adjustments
+    imgData = adjustImageData(imgData, brightness, contrast, saturation);
+
+    // Apply dithering
+    imgData = convertTo4Colors(imgData, algorithm);
+
+    // Put back to canvas
     ctx.putImageData(imgData, 0, 0);
 }
 
+function resizeImage(img, mode) {
+    importedImageMode = mode;
+    applyImageAdjustmentsAndDither();
+}
+
 function cropImage(img) {
-    const canvas = document.getElementById('importCanvas');
-    const ctx = canvas.getContext('2d');
-
-    // Enable image smoothing
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    // Clear canvas
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, 160, 140);
-
-    // Calculate center crop from source image
-    const srcX = Math.max(0, Math.round((img.width - 160) / 2));
-    const srcY = Math.max(0, Math.round((img.height - 140) / 2));
-    const srcW = Math.min(160, img.width);
-    const srcH = Math.min(140, img.height);
-
-    // Calculate destination position (center if source is smaller)
-    const dstX = Math.max(0, Math.round((160 - srcW) / 2));
-    const dstY = Math.max(0, Math.round((140 - srcH) / 2));
-
-    // Draw cropped portion
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, dstX, dstY, srcW, srcH);
-
-    // Convert to 4 colors with dithering
-    let imgData = ctx.getImageData(0, 0, 160, 140);
-    imgData = convertTo4Colors(imgData);
-    ctx.putImageData(imgData, 0, 0);
+    importedImageMode = 'crop';
+    applyImageAdjustmentsAndDither();
 }
 
 // Event Listeners
@@ -442,11 +546,52 @@ document.getElementById('pngInput').addEventListener('change', (e) => {
         // Show import section
         document.getElementById('importSection').style.display = 'block';
 
+        // Reset adjustments to defaults
+        document.getElementById('brightnessSlider').value = 0;
+        document.getElementById('contrastSlider').value = 0;
+        document.getElementById('saturationSlider').value = 100;
+        document.getElementById('ditheringAlgorithm').value = 'floyd-steinberg';
+        document.getElementById('brightnessValue').textContent = '0';
+        document.getElementById('contrastValue').textContent = '0';
+        document.getElementById('saturationValue').textContent = '1.0';
+
         // Default: resize to fit
         resizeImage(importedImage, 'fit');
     };
     importedImage.src = URL.createObjectURL(file);
     e.target.value = ''; // Reset input
+});
+
+// Image adjustment sliders
+document.getElementById('brightnessSlider').addEventListener('input', (e) => {
+    document.getElementById('brightnessValue').textContent = e.target.value;
+    if (importedImage) applyImageAdjustmentsAndDither();
+});
+
+document.getElementById('contrastSlider').addEventListener('input', (e) => {
+    document.getElementById('contrastValue').textContent = e.target.value;
+    if (importedImage) applyImageAdjustmentsAndDither();
+});
+
+document.getElementById('saturationSlider').addEventListener('input', (e) => {
+    const value = (parseInt(e.target.value) / 100).toFixed(1);
+    document.getElementById('saturationValue').textContent = value;
+    if (importedImage) applyImageAdjustmentsAndDither();
+});
+
+document.getElementById('ditheringAlgorithm').addEventListener('change', () => {
+    if (importedImage) applyImageAdjustmentsAndDither();
+});
+
+document.getElementById('resetAdjustmentsBtn').addEventListener('click', () => {
+    document.getElementById('brightnessSlider').value = 0;
+    document.getElementById('contrastSlider').value = 0;
+    document.getElementById('saturationSlider').value = 100;
+    document.getElementById('ditheringAlgorithm').value = 'floyd-steinberg';
+    document.getElementById('brightnessValue').textContent = '0';
+    document.getElementById('contrastValue').textContent = '0';
+    document.getElementById('saturationValue').textContent = '1.0';
+    if (importedImage) applyImageAdjustmentsAndDither();
 });
 
 document.getElementById('cropBtn').addEventListener('click', () => {
@@ -537,12 +682,11 @@ async function autoLoadEmbeddedATR() {
         console.log('Auto-loading embedded Strip Poker.atr...');
         document.getElementById('status').textContent = 'Loading embedded ATR...';
 
-        // Get embedded ATR data
-        const buffer = getEmbeddedATR();
+        // Get embedded ATR data (already a Uint8Array)
+        atrBuffer = new Uint8Array(getEmbeddedATR());
 
-        // Process it as if user loaded it
-        atrBuffer = buffer;
-        const view = new DataView(atrBuffer);
+        // Create DataView for parsing
+        const view = new DataView(atrBuffer.buffer);
 
         // Parse ATR header
         const magic = view.getUint16(0, true);
@@ -602,6 +746,11 @@ async function autoLoadEmbeddedATR() {
         document.getElementById('status').textContent = `Loaded ${ATR_FILENAME} (${diskFiles.length} files)`;
         document.getElementById('saveAtrBtn').disabled = false;
 
+        // Show tabs and initialize text editor
+        document.getElementById('tabNav').style.display = 'block';
+        showTab('image');
+        initializeTextEditor();
+
         console.log('Auto-load complete!');
     } catch (error) {
         console.error('Auto-load failed:', error);
@@ -609,7 +758,128 @@ async function autoLoadEmbeddedATR() {
     }
 }
 
-// Auto-load on page load
-window.addEventListener('DOMContentLoaded', () => {
+// --- Tab Switching ---
+function showTab(tabName) {
+    const imageTab = document.getElementById('imageEditorTab');
+    const textTab = document.getElementById('textEditorTab');
+    const imageBtn = document.getElementById('imageTabBtn');
+    const textBtn = document.getElementById('textTabBtn');
+
+    if (tabName === 'image') {
+        imageTab.style.display = 'block';
+        textTab.style.display = 'none';
+        imageBtn.classList.add('active');
+        textBtn.classList.remove('active');
+        imageBtn.style.borderBottom = '3px solid #4CAF50';
+        textBtn.style.borderBottom = '3px solid transparent';
+    } else {
+        imageTab.style.display = 'none';
+        textTab.style.display = 'block';
+        imageBtn.classList.remove('active');
+        textBtn.classList.add('active');
+        imageBtn.style.borderBottom = '3px solid transparent';
+        textBtn.style.borderBottom = '3px solid #4CAF50';
+    }
+}
+
+document.getElementById('imageTabBtn').addEventListener('click', () => showTab('image'));
+document.getElementById('textTabBtn').addEventListener('click', () => showTab('text'));
+
+// --- Text Editor Functions ---
+function initializeTextEditor() {
+    const container = document.getElementById('textEditorList');
+    container.innerHTML = '';
+
+    EDITABLE_TEXTS.forEach((textDef, index) => {
+        const div = document.createElement('div');
+        div.style.cssText = 'padding: 15px; background: #2a2a2a; border-radius: 5px;';
+
+        const label = document.createElement('label');
+        label.style.cssText = 'display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;';
+        label.textContent = `${textDef.description} (${textDef.length} chars)`;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = `text_${index}`;
+        input.value = textDef.text;
+        input.maxLength = textDef.length;
+        input.style.cssText = 'width: 100%; padding: 8px; background: #1a1a1a; color: #fff; border: 1px solid #555; border-radius: 3px; font-family: monospace; font-size: 1rem;';
+
+        const charCount = document.createElement('span');
+        charCount.id = `charCount_${index}`;
+        charCount.style.cssText = 'display: block; margin-top: 5px; font-size: 0.8rem; color: #888;';
+        charCount.textContent = `${textDef.text.length} / ${textDef.length} characters`;
+
+        input.addEventListener('input', () => {
+            const len = input.value.length;
+            const max = textDef.length;
+            charCount.textContent = `${len} / ${max} characters`;
+
+            if (len === max) {
+                charCount.style.color = '#4CAF50';
+            } else if (len < max) {
+                charCount.style.color = '#ff9800';
+            } else {
+                charCount.style.color = '#f44336';
+            }
+        });
+
+        div.appendChild(label);
+        div.appendChild(input);
+        div.appendChild(charCount);
+        container.appendChild(div);
+    });
+}
+
+function saveTextChanges() {
+    if (!atrBuffer) {
+        alert('No ATR loaded!');
+        return;
+    }
+
+    let changedCount = 0;
+    const errors = [];
+
+    EDITABLE_TEXTS.forEach((textDef, index) => {
+        const input = document.getElementById(`text_${index}`);
+        const newText = input.value;
+
+        // Validate length
+        if (newText.length !== textDef.length) {
+            errors.push(`"${textDef.description}" must be exactly ${textDef.length} characters (currently ${newText.length})`);
+            return;
+        }
+
+        // Check if changed
+        if (newText !== textDef.text) {
+            // Write to ATR buffer
+            const bytes = new TextEncoder().encode(newText);
+            for (let i = 0; i < bytes.length; i++) {
+                atrBuffer[textDef.offset + i] = bytes[i];
+            }
+            changedCount++;
+
+            // Update the definition for future comparisons
+            textDef.text = newText;
+        }
+    });
+
+    if (errors.length > 0) {
+        alert('⚠️ Cannot save - length errors:\n\n' + errors.join('\n'));
+        return;
+    }
+
+    if (changedCount === 0) {
+        alert('No changes detected.');
+        return;
+    }
+
+    alert(`✓ Saved ${changedCount} text change(s) to memory.\n\nNow click "Download Modified ATR" to save the file.`);
+}
+
+document.getElementById('saveTextsBtn').addEventListener('click', saveTextChanges);
+
+// Load embedded ATR when "Load Data" button is clicked
+document.getElementById('loadDataBtn').addEventListener('click', () => {
     autoLoadEmbeddedATR();
 });

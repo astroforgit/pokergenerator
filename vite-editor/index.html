@@ -8,10 +8,11 @@
   <body>
     <header>
       <div style="display:flex; align-items:center">
-          <h1>Atari Image Editor</h1>
-          <span id="status" class="status">Loading embedded ATR...</span>
+          <h1>Atari Strip Poker Editor</h1>
+          <span id="status" class="status">Click "Load Data" to start</span>
       </div>
       <div>
+          <button id="loadDataBtn" class="primary" title="Load embedded Strip Poker data">📂 Load Data</button>
           <button id="loadAtrBtn" title="Load a different ATR file">📁 Load Different ATR</button>
           <button id="saveAtrBtn" class="primary">💾 Download Modified ATR</button>
           <input type="file" id="atrInput" accept=".atr" style="display:none">
@@ -25,6 +26,18 @@
             </ul>
         </div>
         <div class="editor-area">
+            <!-- Tab Navigation -->
+            <div id="tabNav" style="display:none; margin-bottom: 20px; border-bottom: 2px solid #444;">
+                <button id="imageTabBtn" class="tab-button active" style="padding: 10px 20px; background: #333; border: none; color: #fff; cursor: pointer; border-bottom: 3px solid #4CAF50;">
+                    🖼️ Image Editor
+                </button>
+                <button id="textTabBtn" class="tab-button" style="padding: 10px 20px; background: #333; border: none; color: #fff; cursor: pointer; border-bottom: 3px solid transparent;">
+                    📝 Text Editor
+                </button>
+            </div>
+
+            <!-- Image Editor Tab -->
+            <div id="imageEditorTab" class="editor-tab" style="display:none;">
             <div id="editorControls" style="display:none; flex-direction: column; align-items: center;">
                 <!-- Canvas Area -->
                 <div class="canvas-wrapper">
@@ -40,7 +53,50 @@
                 <!-- Image Import Section -->
                 <div id="importSection" class="tool-section" style="display:none;">
                     <h3>Import Image</h3>
-                    <canvas id="importCanvas" width="160" height="140" style="border: 1px solid #555; max-width: 400px;"></canvas>
+                    <canvas id="importCanvas" width="160" height="140" style="border: 1px solid #555; max-width: 800px; image-rendering: crisp-edges;"></canvas>
+
+                    <!-- Image Adjustments -->
+                    <div style="margin: 15px 0; padding: 15px; background: #2a2a2a; border-radius: 5px; max-width: 800px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 0.9rem;">Image Adjustments</h4>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+                            <div>
+                                <label style="font-size: 0.8rem; display: block; margin-bottom: 5px;">
+                                    Brightness: <span id="brightnessValue">0</span>
+                                </label>
+                                <input type="range" id="brightnessSlider" min="-100" max="100" value="0" style="width: 100%;">
+                            </div>
+
+                            <div>
+                                <label style="font-size: 0.8rem; display: block; margin-bottom: 5px;">
+                                    Contrast: <span id="contrastValue">0</span>
+                                </label>
+                                <input type="range" id="contrastSlider" min="-100" max="100" value="0" style="width: 100%;">
+                            </div>
+
+                            <div>
+                                <label style="font-size: 0.8rem; display: block; margin-bottom: 5px;">
+                                    Saturation: <span id="saturationValue">1.0</span>
+                                </label>
+                                <input type="range" id="saturationSlider" min="0" max="200" value="100" style="width: 100%;">
+                            </div>
+
+                            <div>
+                                <label style="font-size: 0.8rem; display: block; margin-bottom: 5px;">
+                                    Dithering Algorithm
+                                </label>
+                                <select id="ditheringAlgorithm" style="width: 100%; padding: 5px; background: #1a1a1a; color: #fff; border: 1px solid #555; border-radius: 3px;">
+                                    <option value="floyd-steinberg">Floyd-Steinberg (Best Quality)</option>
+                                    <option value="atkinson">Atkinson (Mac Classic)</option>
+                                    <option value="ordered">Ordered/Bayer (Pattern)</option>
+                                    <option value="none">None (Nearest Color)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button id="resetAdjustmentsBtn" style="padding: 5px 10px; font-size: 0.8rem;">Reset All</button>
+                    </div>
+
                     <div class="toolbar">
                         <button id="cropBtn">Crop to 160×140</button>
                         <button id="resizeFitBtn">Resize (Fit)</button>
@@ -49,7 +105,7 @@
                         <button id="cancelImportBtn">Cancel</button>
                     </div>
                     <p style="font-size: 0.75rem; color: #888; margin: 5px 0;">
-                        Image will be auto-converted to 4-color Atari palette
+                        Adjust settings above, then click Apply to transfer to main canvas
                     </p>
                 </div>
 
@@ -75,6 +131,32 @@
             <div id="placeholder" style="margin-top: 100px; color: #666;">
                 Select a file from the list to edit.
             </div>
+            </div>
+            <!-- End Image Editor Tab -->
+
+            <!-- Text Editor Tab -->
+            <div id="textEditorTab" class="editor-tab" style="display:none;">
+                <div style="max-width: 900px; margin: 0 auto; padding: 20px;">
+                    <h2>Game Text Editor</h2>
+                    <p style="color: #888; margin-bottom: 20px;">
+                        Edit in-game messages below. ⚠️ <strong>Text length must remain exactly the same</strong> to avoid corrupting the ATR file.
+                    </p>
+
+                    <div id="textEditorList" style="display: flex; flex-direction: column; gap: 15px;">
+                        <!-- Text inputs will be generated here -->
+                    </div>
+
+                    <div style="margin-top: 30px; padding: 15px; background: #2a2a2a; border-radius: 5px;">
+                        <button id="saveTextsBtn" class="primary" style="padding: 12px 24px; font-size: 1rem;">
+                            💾 Save All Text Changes
+                        </button>
+                        <p style="font-size: 0.8rem; color: #888; margin-top: 10px;">
+                            After saving, click "Download Modified ATR" to save the file to your computer.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <!-- End Text Editor Tab -->
         </div>
     </div>
     <script type="module" src="/src/main.js"></script>
