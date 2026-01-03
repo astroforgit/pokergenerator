@@ -64,3 +64,29 @@ input[type="file"] { display: none; }
 .swatch { width: 30px; height: 30px; border: 2px solid #555; cursor: pointer; }
 .swatch.selected { border-color: white; transform: scale(1.1); }
 .status { margin-left: 10px; font-size: 0.8rem; color: #aaa; }
+
+/* Help Modal Styles */
+#helpModal h3 {
+    color: #4CAF50;
+    border-bottom: 2px solid #4CAF50;
+    padding-bottom: 5px;
+    margin-top: 25px;
+}
+#helpModal h3:first-of-type {
+    margin-top: 0;
+}
+#helpModal ul {
+    margin-left: 20px;
+    line-height: 1.8;
+}
+#helpModal li {
+    margin-bottom: 8px;
+}
+#helpModal strong {
+    color: #fff;
+}
+#closeHelpBtn:hover {
+    background: #d32f2f !important;
+    transform: scale(1.05);
+    transition: all 0.2s;
+}

@@ -1015,7 +1015,31 @@ function saveTextChanges() {
 
 document.getElementById('saveTextsBtn').addEventListener('click', saveTextChanges);
 
-// Load embedded ATR when "Load Data" button is clicked
-document.getElementById('loadDataBtn').addEventListener('click', () => {
+// Help button
+document.getElementById('helpBtn').addEventListener('click', () => {
+    document.getElementById('helpModal').style.display = 'block';
+});
+
+document.getElementById('closeHelpBtn').addEventListener('click', () => {
+    document.getElementById('helpModal').style.display = 'none';
+});
+
+// Close help modal when clicking outside
+document.getElementById('helpModal').addEventListener('click', (e) => {
+    if (e.target.id === 'helpModal') {
+        document.getElementById('helpModal').style.display = 'none';
+    }
+});
+
+// Close help modal with Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('helpModal').style.display === 'block') {
+        document.getElementById('helpModal').style.display = 'none';
+    }
+});
+
+// Auto-load embedded ATR on page load
+window.addEventListener('DOMContentLoaded', () => {
+    console.log('Page loaded, auto-loading embedded ATR...');
     autoLoadEmbeddedATR();
 });

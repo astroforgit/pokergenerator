@@ -9,10 +9,10 @@
     <header>
       <div style="display:flex; align-items:center">
           <h1>Atari Strip Poker Editor</h1>
-          <span id="status" class="status">Click "Load Data" to start</span>
+          <span id="status" class="status">Loading...</span>
       </div>
       <div>
-          <button id="loadDataBtn" class="primary" title="Load embedded Strip Poker data">📂 Load Data</button>
+          <button id="helpBtn" class="primary" title="Show help and documentation">❓ Help</button>
           <button id="loadAtrBtn" title="Load a different ATR file">📁 Load Different ATR</button>
           <button id="saveAtrBtn" class="primary">💾 Download Modified ATR</button>
           <input type="file" id="atrInput" accept=".atr" style="display:none">
@@ -159,6 +159,112 @@
             <!-- End Text Editor Tab -->
         </div>
     </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; overflow:auto;">
+        <div style="background:#1a1a1a; max-width:800px; margin:50px auto; padding:30px; border-radius:10px; border:2px solid #4CAF50;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="color:#4CAF50; margin:0;">📖 Atari Strip Poker Editor - Help</h2>
+                <button id="closeHelpBtn" style="background:#f44336; color:white; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; font-size:1.2rem;">✕ Close</button>
+            </div>
+
+            <div style="color:#ddd; line-height:1.6;">
+                <h3 style="color:#4CAF50; border-bottom:2px solid #4CAF50; padding-bottom:5px;">🎮 Getting Started</h3>
+                <p>The editor automatically loads the embedded Strip Poker ATR file on startup. You can also load a different ATR file using the "Load Different ATR" button.</p>
+
+                <h3 style="color:#4CAF50; border-bottom:2px solid #4CAF50; padding-bottom:5px; margin-top:25px;">🖼️ Image Editor</h3>
+                <p><strong>Select an Image:</strong> Click on any file in the left sidebar (OP1.1, OP1.2, etc.) to load it for editing.</p>
+
+                <p><strong>Drawing Tools:</strong></p>
+                <ul style="margin-left:20px;">
+                    <li><strong>Draw:</strong> Click and drag on the canvas to draw with the selected color</li>
+                    <li><strong>Erase:</strong> Click "Erase" button, then click and drag to erase (sets to black)</li>
+                    <li><strong>Clear:</strong> Click "Clear" to fill the entire canvas with black</li>
+                    <li><strong>Color Palette:</strong> Click any of the 4 colors (Black, Brown, Orange, White) to select it</li>
+                </ul>
+
+                <p><strong>Import PNG Image:</strong></p>
+                <ul style="margin-left:20px;">
+                    <li>Click "📷 Import PNG" button</li>
+                    <li>Select a PNG file from your computer</li>
+                    <li><strong>Adjust Settings:</strong>
+                        <ul style="margin-left:20px;">
+                            <li><strong>Brightness:</strong> -100 to +100 (makes image darker/lighter)</li>
+                            <li><strong>Contrast:</strong> -100 to +100 (adjusts contrast)</li>
+                            <li><strong>Saturation:</strong> 0 to 2.0 (0=grayscale, 1=normal, 2=vibrant)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Dithering Algorithm:</strong>
+                        <ul style="margin-left:20px;">
+                            <li><strong>Floyd-Steinberg:</strong> Best quality, smooth gradients (recommended)</li>
+                            <li><strong>Atkinson:</strong> Mac Classic style, preserves highlights</li>
+                            <li><strong>Ordered/Bayer:</strong> Retro crosshatch pattern</li>
+                            <li><strong>None:</strong> Sharp, no dithering (nearest color)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Resize Mode:</strong> Choose "Fit" (keeps aspect ratio) or "Fill" (stretches to fill)</li>
+                    <li>Click "Apply to Canvas" when satisfied with preview</li>
+                </ul>
+
+                <p><strong>Save Changes:</strong> Click "✓ Update File in Disk" to save your edits to memory.</p>
+
+                <h3 style="color:#4CAF50; border-bottom:2px solid #4CAF50; padding-bottom:5px; margin-top:25px;">📝 Text Editor</h3>
+                <p>Switch to the "Text Editor" tab to edit game text strings.</p>
+
+                <p><strong>74 Editable Text Strings:</strong></p>
+                <ul style="margin-left:20px;">
+                    <li><strong>Game Messages (14):</strong> Trigger prompts, game results, clothing messages</li>
+                    <li><strong>COM1 Comments (30):</strong> Opponent taunts and reactions (set 1)</li>
+                    <li><strong>COM2 Comments (30):</strong> Opponent taunts and reactions (set 2)</li>
+                </ul>
+
+                <p><strong>Editing Text:</strong></p>
+                <ul style="margin-left:20px;">
+                    <li>Click in any text field to edit</li>
+                    <li><strong>⚠️ IMPORTANT:</strong> Text must be EXACTLY the same length as the original!</li>
+                    <li><strong>Character Counter:</strong>
+                        <ul style="margin-left:20px;">
+                            <li><span style="color:#4CAF50;">🟢 Green:</span> Correct length - ready to save</li>
+                            <li><span style="color:#ff9800;">🟠 Orange:</span> Too short - add more characters</li>
+                            <li><span style="color:#f44336;">🔴 Red:</span> Too long - remove characters</li>
+                        </ul>
+                    </li>
+                    <li>Use spaces to pad shorter text to the required length</li>
+                    <li>Click "💾 Save All Text Changes" when all texts are correct length</li>
+                </ul>
+
+                <h3 style="color:#4CAF50; border-bottom:2px solid #4CAF50; padding-bottom:5px; margin-top:25px;">💾 Saving Your Work</h3>
+                <p><strong>Download Modified ATR:</strong> Click "💾 Download Modified ATR" to download your customized game file.</p>
+                <p>All changes are kept in memory until you download. The downloaded file will be named "StripPoker_Modified.atr".</p>
+
+                <h3 style="color:#4CAF50; border-bottom:2px solid #4CAF50; padding-bottom:5px; margin-top:25px;">🛡️ Safety Features</h3>
+                <ul style="margin-left:20px;">
+                    <li>Text length validation prevents ATR corruption</li>
+                    <li>Cannot save if any text has wrong length</li>
+                    <li>File size remains exactly 92,176 bytes</li>
+                    <li>All changes are in-memory until download</li>
+                </ul>
+
+                <h3 style="color:#4CAF50; border-bottom:2px solid #4CAF50; padding-bottom:5px; margin-top:25px;">💡 Tips</h3>
+                <ul style="margin-left:20px;">
+                    <li>For best PNG import results, use images with good contrast</li>
+                    <li>Try different dithering algorithms to see which looks best</li>
+                    <li>Adjust brightness/contrast before applying to canvas</li>
+                    <li>Use spaces to pad text strings to the required length</li>
+                    <li>Test your modified ATR in an Atari emulator!</li>
+                </ul>
+
+                <h3 style="color:#4CAF50; border-bottom:2px solid #4CAF50; padding-bottom:5px; margin-top:25px;">📋 Technical Info</h3>
+                <ul style="margin-left:20px;">
+                    <li><strong>Image Format:</strong> 160×140 pixels, 4 colors</li>
+                    <li><strong>Colors:</strong> Black (#000000), Brown (#684420), Orange (#C8A050), White (#F8F8F8)</li>
+                    <li><strong>File Format:</strong> Atari ATR disk image (92,176 bytes)</li>
+                    <li><strong>File System:</strong> Atari DOS 2.0S</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
