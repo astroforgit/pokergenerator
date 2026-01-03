@@ -679,69 +679,20 @@ window.addEventListener('mouseup', () => isDrawing = false);
 // --- Auto-load embedded ATR on startup ---
 async function autoLoadEmbeddedATR() {
     try {
-        console.log('Auto-loading embedded Strip Poker.atr...');
+        console.log('Loading embedded Strip Poker.atr...');
         document.getElementById('status').textContent = 'Loading embedded ATR...';
 
         // Get embedded ATR data (already a Uint8Array)
         atrBuffer = new Uint8Array(getEmbeddedATR());
 
-        // Create DataView for parsing
-        const view = new DataView(atrBuffer.buffer);
+        console.log(`ATR buffer loaded: ${atrBuffer.length} bytes`);
+        console.log(`First 16 bytes: ${Array.from(atrBuffer.slice(0, 16)).join(',')}`);
 
-        // Parse ATR header
-        const magic = view.getUint16(0, true);
-        if (magic !== 0x0296) {
-            throw new Error('Invalid ATR file (bad magic number)');
-        }
+        // Use the same parseDirectory function as file loading
+        parseDirectory();
 
-        const paragraphs = view.getUint16(2, true);
-        const sectorSize = view.getUint16(4, true);
-        const imageSize = view.getUint32(6, true);
-
-        console.log(`ATR loaded: ${paragraphs} paragraphs, sector size ${sectorSize}, image size ${imageSize}`);
-
-        // Read directory
-        diskFiles = [];
-        const dirStart = 16 + (3 * 128); // Skip header + boot sectors
-
-        for (let i = 0; i < 64; i++) {
-            const entryOffset = dirStart + (i * 16);
-            const flag = view.getUint8(entryOffset);
-
-            if (flag === 0) break; // End of directory
-            if ((flag & 0x80) === 0) continue; // Deleted file
-
-            const sectorMap = view.getUint16(entryOffset + 1, true);
-            const sectorCount = view.getUint16(entryOffset + 3, true);
-
-            let name = '';
-            for (let j = 0; j < 8; j++) {
-                const c = view.getUint8(entryOffset + 5 + j);
-                if (c !== 0x20) name += String.fromCharCode(c);
-            }
-
-            let ext = '';
-            for (let j = 0; j < 3; j++) {
-                const c = view.getUint8(entryOffset + 13 + j);
-                if (c !== 0x20) ext += String.fromCharCode(c);
-            }
-
-            const filename = ext ? `${name}.${ext}` : name;
-            diskFiles.push({ name: filename, sector: sectorMap, count: sectorCount, size: sectorCount * 125 });
-        }
-
-        console.log(`Found ${diskFiles.length} files`);
-
-        // Update UI
-        const fileList = document.getElementById('fileList');
-        fileList.innerHTML = '';
-        diskFiles.forEach(f => {
-            const li = document.createElement('li');
-            li.className = 'file-item';
-            li.innerHTML = `<span>${f.name}</span><span class="size">${f.size}B</span>`;
-            li.onclick = () => loadFile(f);
-            fileList.appendChild(li);
-        });
+        console.log(`Parsed ${diskFiles.length} files`);
+        diskFiles.forEach(f => console.log(`  - ${f.name}: sector ${f.startSector}, count ${f.sectorCount}`));
 
         document.getElementById('status').textContent = `Loaded ${ATR_FILENAME} (${diskFiles.length} files)`;
         document.getElementById('saveAtrBtn').disabled = false;
@@ -751,10 +702,11 @@ async function autoLoadEmbeddedATR() {
         showTab('image');
         initializeTextEditor();
 
-        console.log('Auto-load complete!');
+        console.log('Load complete!');
     } catch (error) {
-        console.error('Auto-load failed:', error);
-        document.getElementById('status').textContent = `Auto-load failed: ${error.message}`;
+        console.error('Load failed:', error);
+        console.error('Stack trace:', error.stack);
+        document.getElementById('status').textContent = `Load failed: ${error.message}`;
     }
 }
 
@@ -786,13 +738,74 @@ document.getElementById('imageTabBtn').addEventListener('click', () => showTab('
 document.getElementById('textTabBtn').addEventListener('click', () => showTab('text'));
 
 // --- Text Editor Functions ---
+
+// Helper function to read a complete file from disk (handles sector chains)
+function readCompleteFile(fileName) {
+    const file = diskFiles.find(f => f.name === fileName);
+    if (!file) return null;
+
+    const data = readFileData(file);
+    return data;
+}
+
+// Helper function to write a complete file to disk (handles sector chains)
+function writeCompleteFile(fileName, data) {
+    const file = diskFiles.find(f => f.name === fileName);
+    if (!file) return false;
+
+    const chain = getFileChain(file.startSector);
+    let dataPos = 0;
+
+    for (let i = 0; i < chain.length && dataPos < data.length; i++) {
+        const sector = readSector(chain[i]);
+        const bytesToWrite = Math.min(125, data.length - dataPos);
+
+        // Write data bytes
+        for (let j = 0; j < bytesToWrite; j++) {
+            sector[j] = data[dataPos++];
+        }
+
+        // Update byte count
+        sector[127] = bytesToWrite;
+
+        // Write sector back
+        writeSector(chain[i], sector);
+    }
+
+    return true;
+}
+
+// Load COM file texts
+function loadCOMTexts() {
+    const comTexts = { COM1: [], COM2: [] };
+
+    for (const fileName of ['COM1', 'COM2']) {
+        const data = readCompleteFile(fileName);
+        if (data) {
+            // Each comment is 30 chars, there are 30 comments (900 bytes total)
+            for (let i = 0; i < 30; i++) {
+                const start = i * 30;
+                const text = String.fromCharCode(...data.slice(start, start + 30));
+                comTexts[fileName].push(text);
+            }
+        }
+    }
+
+    return comTexts;
+}
+
 function initializeTextEditor() {
     const container = document.getElementById('textEditorList');
     container.innerHTML = '';
 
+    // Add section for embedded texts
+    const embeddedSection = document.createElement('div');
+    embeddedSection.innerHTML = '<h3 style="color: #4CAF50; margin: 20px 0 10px 0;">Game Messages</h3>';
+    container.appendChild(embeddedSection);
+
     EDITABLE_TEXTS.forEach((textDef, index) => {
         const div = document.createElement('div');
-        div.style.cssText = 'padding: 15px; background: #2a2a2a; border-radius: 5px;';
+        div.style.cssText = 'padding: 15px; background: #2a2a2a; border-radius: 5px; margin-bottom: 10px;';
 
         const label = document.createElement('label');
         label.style.cssText = 'display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;';
@@ -829,6 +842,82 @@ function initializeTextEditor() {
         div.appendChild(charCount);
         container.appendChild(div);
     });
+
+    // Add section for COM1 comments
+    const com1Section = document.createElement('div');
+    com1Section.innerHTML = '<h3 style="color: #4CAF50; margin: 30px 0 10px 0;">COM1 - Opponent Comments (Set 1)</h3>';
+    container.appendChild(com1Section);
+
+    const comTexts = loadCOMTexts();
+
+    comTexts.COM1.forEach((text, index) => {
+        const div = document.createElement('div');
+        div.style.cssText = 'padding: 15px; background: #2a2a2a; border-radius: 5px; margin-bottom: 10px;';
+
+        const label = document.createElement('label');
+        label.style.cssText = 'display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;';
+        label.textContent = `Comment ${index + 1} (30 chars)`;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = `com1_${index}`;
+        input.value = text;
+        input.maxLength = 30;
+        input.style.cssText = 'width: 100%; padding: 8px; background: #1a1a1a; color: #fff; border: 1px solid #555; border-radius: 3px; font-family: monospace; font-size: 1rem;';
+
+        const charCount = document.createElement('span');
+        charCount.id = `com1Count_${index}`;
+        charCount.style.cssText = 'display: block; margin-top: 5px; font-size: 0.8rem; color: #888;';
+        charCount.textContent = `${text.length} / 30 characters`;
+
+        input.addEventListener('input', () => {
+            const len = input.value.length;
+            charCount.textContent = `${len} / 30 characters`;
+            charCount.style.color = len === 30 ? '#4CAF50' : (len < 30 ? '#ff9800' : '#f44336');
+        });
+
+        div.appendChild(label);
+        div.appendChild(input);
+        div.appendChild(charCount);
+        container.appendChild(div);
+    });
+
+    // Add section for COM2 comments
+    const com2Section = document.createElement('div');
+    com2Section.innerHTML = '<h3 style="color: #4CAF50; margin: 30px 0 10px 0;">COM2 - Opponent Comments (Set 2)</h3>';
+    container.appendChild(com2Section);
+
+    comTexts.COM2.forEach((text, index) => {
+        const div = document.createElement('div');
+        div.style.cssText = 'padding: 15px; background: #2a2a2a; border-radius: 5px; margin-bottom: 10px;';
+
+        const label = document.createElement('label');
+        label.style.cssText = 'display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;';
+        label.textContent = `Comment ${index + 1} (30 chars)`;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = `com2_${index}`;
+        input.value = text;
+        input.maxLength = 30;
+        input.style.cssText = 'width: 100%; padding: 8px; background: #1a1a1a; color: #fff; border: 1px solid #555; border-radius: 3px; font-family: monospace; font-size: 1rem;';
+
+        const charCount = document.createElement('span');
+        charCount.id = `com2Count_${index}`;
+        charCount.style.cssText = 'display: block; margin-top: 5px; font-size: 0.8rem; color: #888;';
+        charCount.textContent = `${text.length} / 30 characters`;
+
+        input.addEventListener('input', () => {
+            const len = input.value.length;
+            charCount.textContent = `${len} / 30 characters`;
+            charCount.style.color = len === 30 ? '#4CAF50' : (len < 30 ? '#ff9800' : '#f44336');
+        });
+
+        div.appendChild(label);
+        div.appendChild(input);
+        div.appendChild(charCount);
+        container.appendChild(div);
+    });
 }
 
 function saveTextChanges() {
@@ -840,6 +929,7 @@ function saveTextChanges() {
     let changedCount = 0;
     const errors = [];
 
+    // Save embedded texts
     EDITABLE_TEXTS.forEach((textDef, index) => {
         const input = document.getElementById(`text_${index}`);
         const newText = input.value;
@@ -863,6 +953,52 @@ function saveTextChanges() {
             textDef.text = newText;
         }
     });
+
+    // Save COM1 texts
+    const com1Data = [];
+    for (let i = 0; i < 30; i++) {
+        const input = document.getElementById(`com1_${i}`);
+        const newText = input.value;
+
+        if (newText.length !== 30) {
+            errors.push(`COM1 Comment ${i + 1} must be exactly 30 characters (currently ${newText.length})`);
+            continue;
+        }
+
+        // Convert to bytes
+        for (let j = 0; j < 30; j++) {
+            com1Data.push(newText.charCodeAt(j));
+        }
+    }
+
+    if (com1Data.length === 900) {
+        if (writeCompleteFile('COM1', com1Data)) {
+            changedCount++;
+        }
+    }
+
+    // Save COM2 texts
+    const com2Data = [];
+    for (let i = 0; i < 30; i++) {
+        const input = document.getElementById(`com2_${i}`);
+        const newText = input.value;
+
+        if (newText.length !== 30) {
+            errors.push(`COM2 Comment ${i + 1} must be exactly 30 characters (currently ${newText.length})`);
+            continue;
+        }
+
+        // Convert to bytes
+        for (let j = 0; j < 30; j++) {
+            com2Data.push(newText.charCodeAt(j));
+        }
+    }
+
+    if (com2Data.length === 900) {
+        if (writeCompleteFile('COM2', com2Data)) {
+            changedCount++;
+        }
+    }
 
     if (errors.length > 0) {
         alert('⚠️ Cannot save - length errors:\n\n' + errors.join('\n'));
