@@ -11,12 +11,13 @@ let isDrawing = false;
 let importedImage = null; // Store imported image for processing
 let cropRect = { x: 0, y: 0, width: 160, height: 140 }; // Crop rectangle
 
-// Atari Mode 15 Palette
+// Atari Mode 15 Palette (NTSC - Hue 1 Orange/Gold tones)
+// Based on actual game screenshot - uses warm brown/orange palette
 const PALETTE = [
-    {r: 0, g: 0, b: 0},       // 00
-    {r: 255, g: 180, b: 140}, // 01
-    {r: 80, g: 80, b: 255},   // 10
-    {r: 255, g: 255, b: 255}  // 11
+    {r: 0, g: 0, b: 0},         // 00 - Black (Hue 0, Lum 0)
+    {r: 148, g: 108, b: 0},     // 01 - Dark Brown (Hue 1, Lum 4)
+    {r: 228, g: 188, b: 124},   // 10 - Light Tan (Hue 1, Lum 8)
+    {r: 255, g: 228, b: 184}    // 11 - Light Orange/Cream (Hue 1, Lum 10)
 ];
 
 // --- ATR / DOS 2.0 Helpers ---
