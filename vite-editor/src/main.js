@@ -256,15 +256,20 @@ function canvasToBinary() {
 // --- Image Import & Conversion Functions ---
 function getClosestPaletteColor(r, g, b) {
     let minDist = Infinity;
-    let bestIdx = 0;
-    PALETTE.forEach((c, idx) => {
-        const dist = (r - c.r) ** 2 + (g - c.g) ** 2 + (b - c.b) ** 2;
+    let bestColor = PALETTE[0];
+    PALETTE.forEach((c) => {
+        // Use Euclidean distance in RGB space
+        const dist = Math.sqrt(
+            (r - c.r) ** 2 +
+            (g - c.g) ** 2 +
+            (b - c.b) ** 2
+        );
         if (dist < minDist) {
             minDist = dist;
-            bestIdx = idx;
+            bestColor = c;
         }
     });
-    return bestIdx;
+    return bestColor;
 }
 
 function convertTo4Colors(imageData) {
@@ -281,8 +286,7 @@ function convertTo4Colors(imageData) {
             const oldB = data[idx + 2];
 
             // Find closest palette color
-            const colorIdx = getClosestPaletteColor(oldR, oldG, oldB);
-            const newColor = PALETTE[colorIdx];
+            const newColor = getClosestPaletteColor(oldR, oldG, oldB);
 
             // Set new color
             data[idx] = newColor.r;
@@ -300,9 +304,9 @@ function convertTo4Colors(imageData) {
                 const ny = y + dy;
                 if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
                     const nidx = (ny * width + nx) * 4;
-                    data[nidx] += errR * factor;
-                    data[nidx + 1] += errG * factor;
-                    data[nidx + 2] += errB * factor;
+                    data[nidx] = Math.max(0, Math.min(255, data[nidx] + errR * factor));
+                    data[nidx + 1] = Math.max(0, Math.min(255, data[nidx + 1] + errG * factor));
+                    data[nidx + 2] = Math.max(0, Math.min(255, data[nidx + 2] + errB * factor));
                 }
             };
 
@@ -321,29 +325,35 @@ function resizeImage(img, mode) {
     const canvas = document.getElementById('importCanvas');
     const ctx = canvas.getContext('2d');
 
+    // Enable image smoothing for better quality resize
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // Clear canvas
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, 160, 140);
+
     if (mode === 'fit') {
         // Fit: maintain aspect ratio, may have letterboxing
         const scale = Math.min(160 / img.width, 140 / img.height);
-        const w = img.width * scale;
-        const h = img.height * scale;
-        const x = (160 - w) / 2;
-        const y = (140 - h) / 2;
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const x = Math.round((160 - w) / 2);
+        const y = Math.round((140 - h) / 2);
 
-        ctx.fillStyle = 'black';
-        ctx.fillRect(0, 0, 160, 140);
         ctx.drawImage(img, x, y, w, h);
     } else {
         // Fill: cover entire canvas, may crop
         const scale = Math.max(160 / img.width, 140 / img.height);
-        const w = img.width * scale;
-        const h = img.height * scale;
-        const x = (160 - w) / 2;
-        const y = (140 - h) / 2;
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const x = Math.round((160 - w) / 2);
+        const y = Math.round((140 - h) / 2);
 
         ctx.drawImage(img, x, y, w, h);
     }
 
-    // Convert to 4 colors
+    // Convert to 4 colors with dithering
     let imgData = ctx.getImageData(0, 0, 160, 140);
     imgData = convertTo4Colors(imgData);
     ctx.putImageData(imgData, 0, 0);
@@ -353,17 +363,28 @@ function cropImage(img) {
     const canvas = document.getElementById('importCanvas');
     const ctx = canvas.getContext('2d');
 
-    // Calculate center crop
-    const srcX = Math.max(0, (img.width - 160) / 2);
-    const srcY = Math.max(0, (img.height - 140) / 2);
+    // Enable image smoothing
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // Clear canvas
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, 160, 140);
+
+    // Calculate center crop from source image
+    const srcX = Math.max(0, Math.round((img.width - 160) / 2));
+    const srcY = Math.max(0, Math.round((img.height - 140) / 2));
     const srcW = Math.min(160, img.width);
     const srcH = Math.min(140, img.height);
 
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, 160, 140);
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+    // Calculate destination position (center if source is smaller)
+    const dstX = Math.max(0, Math.round((160 - srcW) / 2));
+    const dstY = Math.max(0, Math.round((140 - srcH) / 2));
 
-    // Convert to 4 colors
+    // Draw cropped portion
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, dstX, dstY, srcW, srcH);
+
+    // Convert to 4 colors with dithering
     let imgData = ctx.getImageData(0, 0, 160, 140);
     imgData = convertTo4Colors(imgData);
     ctx.putImageData(imgData, 0, 0);
