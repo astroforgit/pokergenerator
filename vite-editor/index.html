@@ -26,30 +26,48 @@
         </div>
         <div class="editor-area">
             <div id="editorControls" style="display:none; flex-direction: column; align-items: center;">
-                <div class="canvas-container">
-                    <canvas id="editorCanvas" width="160" height="140"></canvas>
+                <!-- Canvas Area -->
+                <div class="canvas-wrapper">
+                    <div class="canvas-container">
+                        <canvas id="editorCanvas" width="160" height="140"></canvas>
+                        <div id="cropOverlay" style="display:none;"></div>
+                    </div>
+                    <p style="font-size: 0.75rem; color: #888; margin: 5px 0;">
+                        Display scaled to match Atari aspect ratio (pixels are rectangular, not square)
+                    </p>
                 </div>
-                <p style="font-size: 0.75rem; color: #888; margin: 5px 0;">
-                    Display scaled to match Atari aspect ratio (pixels are rectangular, not square)
-                </p>
-                
+
+                <!-- Image Import Section -->
+                <div id="importSection" class="tool-section" style="display:none;">
+                    <h3>Import Image</h3>
+                    <canvas id="importCanvas" width="160" height="140" style="border: 1px solid #555; max-width: 400px;"></canvas>
+                    <div class="toolbar">
+                        <button id="cropBtn">Crop to 160×140</button>
+                        <button id="resizeFitBtn">Resize (Fit)</button>
+                        <button id="resizeFillBtn">Resize (Fill)</button>
+                        <button id="applyImportBtn" class="primary">Apply to Canvas</button>
+                        <button id="cancelImportBtn">Cancel</button>
+                    </div>
+                    <p style="font-size: 0.75rem; color: #888; margin: 5px 0;">
+                        Image will be auto-converted to 4-color Atari palette
+                    </p>
+                </div>
+
+                <!-- Drawing Tools -->
                 <div class="palette">
-                    <!-- Atari Mode 15 Palette -->
-                    <div class="swatch" data-color="0" style="background-color: rgb(0,0,0)" title="Color 0 (Black)"></div>
+                    <div class="swatch selected" data-color="0" style="background-color: rgb(0,0,0)" title="Color 0 (Black)"></div>
                     <div class="swatch" data-color="1" style="background-color: rgb(255,180,140)" title="Color 1 (Peach)"></div>
                     <div class="swatch" data-color="2" style="background-color: rgb(80,80,255)" title="Color 2 (Blue)"></div>
                     <div class="swatch" data-color="3" style="background-color: rgb(255,255,255)" title="Color 3 (White)"></div>
                 </div>
 
                 <div class="toolbar">
-                    <label>
-                        <button id="importPngBtn">Import PNG</button>
-                        <input type="file" id="pngInput" accept="image/png" style="display:none">
-                    </label>
-                    <button id="clearBtn">Clear</button>
-                    <button id="commitBtn" class="primary">Update File in Disk</button>
+                    <button id="importPngBtn">📁 Import PNG</button>
+                    <input type="file" id="pngInput" accept="image/*" style="display:none">
+                    <button id="clearBtn">🗑️ Clear</button>
+                    <button id="commitBtn" class="primary">💾 Update File in Disk</button>
                 </div>
-                <p style="font-size: 0.8rem; color: #888; max-width: 400px; text-align: center; margin-top: 10px;">
+                <p style="font-size: 0.8rem; color: #888; max-width: 600px; text-align: center; margin-top: 10px;">
                     "Update File in Disk" modifies the memory buffer. Click "Download Modified ATR" to save the final file to your computer.
                 </p>
             </div>

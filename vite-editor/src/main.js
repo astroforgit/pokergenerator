@@ -5,8 +5,10 @@ let atrBuffer = null;
 let diskFiles = [];
 let currentFile = null;
 let currentFileOriginalData = null; // Store original decrypted data to preserve trailing bytes
-let currentColor = 1;
+let currentColor = 0;
 let isDrawing = false;
+let importedImage = null; // Store imported image for processing
+let cropRect = { x: 0, y: 0, width: 160, height: 140 }; // Crop rectangle
 
 // Atari Mode 15 Palette
 const PALETTE = [
@@ -251,6 +253,122 @@ function canvasToBinary() {
     return out;
 }
 
+// --- Image Import & Conversion Functions ---
+function getClosestPaletteColor(r, g, b) {
+    let minDist = Infinity;
+    let bestIdx = 0;
+    PALETTE.forEach((c, idx) => {
+        const dist = (r - c.r) ** 2 + (g - c.g) ** 2 + (b - c.b) ** 2;
+        if (dist < minDist) {
+            minDist = dist;
+            bestIdx = idx;
+        }
+    });
+    return bestIdx;
+}
+
+function convertTo4Colors(imageData) {
+    // Floyd-Steinberg dithering for better quality
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = new Uint8ClampedArray(imageData.data);
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+            const oldR = data[idx];
+            const oldG = data[idx + 1];
+            const oldB = data[idx + 2];
+
+            // Find closest palette color
+            const colorIdx = getClosestPaletteColor(oldR, oldG, oldB);
+            const newColor = PALETTE[colorIdx];
+
+            // Set new color
+            data[idx] = newColor.r;
+            data[idx + 1] = newColor.g;
+            data[idx + 2] = newColor.b;
+
+            // Calculate error
+            const errR = oldR - newColor.r;
+            const errG = oldG - newColor.g;
+            const errB = oldB - newColor.b;
+
+            // Distribute error to neighboring pixels (Floyd-Steinberg)
+            const distributeError = (dx, dy, factor) => {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                    const nidx = (ny * width + nx) * 4;
+                    data[nidx] += errR * factor;
+                    data[nidx + 1] += errG * factor;
+                    data[nidx + 2] += errB * factor;
+                }
+            };
+
+            distributeError(1, 0, 7/16);
+            distributeError(-1, 1, 3/16);
+            distributeError(0, 1, 5/16);
+            distributeError(1, 1, 1/16);
+        }
+    }
+
+    imageData.data.set(data);
+    return imageData;
+}
+
+function resizeImage(img, mode) {
+    const canvas = document.getElementById('importCanvas');
+    const ctx = canvas.getContext('2d');
+
+    if (mode === 'fit') {
+        // Fit: maintain aspect ratio, may have letterboxing
+        const scale = Math.min(160 / img.width, 140 / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        const x = (160 - w) / 2;
+        const y = (140 - h) / 2;
+
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, 160, 140);
+        ctx.drawImage(img, x, y, w, h);
+    } else {
+        // Fill: cover entire canvas, may crop
+        const scale = Math.max(160 / img.width, 140 / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        const x = (160 - w) / 2;
+        const y = (140 - h) / 2;
+
+        ctx.drawImage(img, x, y, w, h);
+    }
+
+    // Convert to 4 colors
+    let imgData = ctx.getImageData(0, 0, 160, 140);
+    imgData = convertTo4Colors(imgData);
+    ctx.putImageData(imgData, 0, 0);
+}
+
+function cropImage(img) {
+    const canvas = document.getElementById('importCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Calculate center crop
+    const srcX = Math.max(0, (img.width - 160) / 2);
+    const srcY = Math.max(0, (img.height - 140) / 2);
+    const srcW = Math.min(160, img.width);
+    const srcH = Math.min(140, img.height);
+
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, 160, 140);
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+
+    // Convert to 4 colors
+    let imgData = ctx.getImageData(0, 0, 160, 140);
+    imgData = convertTo4Colors(imgData);
+    ctx.putImageData(imgData, 0, 0);
+}
+
 // Event Listeners
 document.getElementById('loadAtrBtn').addEventListener('click', () => document.getElementById('atrInput').click());
 document.getElementById('atrInput').addEventListener('change', (e) => {
@@ -295,9 +413,50 @@ document.getElementById('importPngBtn').addEventListener('click', () => document
 document.getElementById('pngInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if(!file) return;
-    const img = new Image();
-    img.onload = () => document.getElementById('editorCanvas').getContext('2d').drawImage(img, 0, 0, 160, 140);
-    img.src = URL.createObjectURL(file);
+
+    importedImage = new Image();
+    importedImage.onload = () => {
+        // Show import section
+        document.getElementById('importSection').style.display = 'block';
+
+        // Default: resize to fit
+        resizeImage(importedImage, 'fit');
+    };
+    importedImage.src = URL.createObjectURL(file);
+    e.target.value = ''; // Reset input
+});
+
+document.getElementById('cropBtn').addEventListener('click', () => {
+    if (!importedImage) return;
+    cropImage(importedImage);
+});
+
+document.getElementById('resizeFitBtn').addEventListener('click', () => {
+    if (!importedImage) return;
+    resizeImage(importedImage, 'fit');
+});
+
+document.getElementById('resizeFillBtn').addEventListener('click', () => {
+    if (!importedImage) return;
+    resizeImage(importedImage, 'fill');
+});
+
+document.getElementById('applyImportBtn').addEventListener('click', () => {
+    // Copy from import canvas to editor canvas
+    const importCanvas = document.getElementById('importCanvas');
+    const editorCanvas = document.getElementById('editorCanvas');
+    const editorCtx = editorCanvas.getContext('2d');
+
+    editorCtx.drawImage(importCanvas, 0, 0);
+
+    // Hide import section
+    document.getElementById('importSection').style.display = 'none';
+    importedImage = null;
+});
+
+document.getElementById('cancelImportBtn').addEventListener('click', () => {
+    document.getElementById('importSection').style.display = 'none';
+    importedImage = null;
 });
 
 document.querySelectorAll('.swatch').forEach(s => {
