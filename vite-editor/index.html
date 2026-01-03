@@ -9,11 +9,11 @@
     <header>
       <div style="display:flex; align-items:center">
           <h1>Atari Image Editor</h1>
-          <span id="status" class="status">Waiting for ATR file...</span>
+          <span id="status" class="status">Loading embedded ATR...</span>
       </div>
       <div>
-          <button id="loadAtrBtn">Load ATR</button>
-          <button id="saveAtrBtn" class="primary">Download Modified ATR</button>
+          <button id="loadAtrBtn" title="Load a different ATR file">📁 Load Different ATR</button>
+          <button id="saveAtrBtn" class="primary">💾 Download Modified ATR</button>
           <input type="file" id="atrInput" accept=".atr" style="display:none">
       </div>
     </header>
@@ -64,6 +64,7 @@
                 <div class="toolbar">
                     <button id="importPngBtn">📁 Import PNG</button>
                     <input type="file" id="pngInput" accept="image/*" style="display:none">
+                    <button id="exportPngBtn">📤 Export as PNG</button>
                     <button id="clearBtn">🗑️ Clear</button>
                     <button id="commitBtn" class="primary">💾 Update File in Disk</button>
                 </div>

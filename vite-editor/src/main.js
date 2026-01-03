@@ -1,4 +1,5 @@
 import './style.css';
+import { getEmbeddedATR, ATR_FILENAME } from './embedded-atr.js';
 
 // --- Global State ---
 let atrBuffer = null;
@@ -480,6 +481,34 @@ document.getElementById('cancelImportBtn').addEventListener('click', () => {
     importedImage = null;
 });
 
+document.getElementById('exportPngBtn').addEventListener('click', () => {
+    if (!currentFile) {
+        alert('Please select a file to export');
+        return;
+    }
+
+    const canvas = document.getElementById('editorCanvas');
+
+    // Create a temporary canvas at actual size (160x140)
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 160;
+    tempCanvas.height = 140;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Copy current canvas content
+    tempCtx.drawImage(canvas, 0, 0, 160, 140);
+
+    // Convert to blob and download
+    tempCanvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${currentFile.name}.png`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }, 'image/png');
+});
+
 document.querySelectorAll('.swatch').forEach(s => {
     s.addEventListener('click', () => {
         currentColor = parseInt(s.dataset.color);
@@ -500,3 +529,86 @@ const draw = (e) => {
 canvas.addEventListener('mousedown', (e) => { isDrawing = true; draw(e); });
 canvas.addEventListener('mousemove', (e) => { if(isDrawing) draw(e); });
 window.addEventListener('mouseup', () => isDrawing = false);
+
+// --- Auto-load embedded ATR on startup ---
+async function autoLoadEmbeddedATR() {
+    try {
+        console.log('Auto-loading embedded Strip Poker.atr...');
+        document.getElementById('status').textContent = 'Loading embedded ATR...';
+
+        // Get embedded ATR data
+        const buffer = getEmbeddedATR();
+
+        // Process it as if user loaded it
+        atrBuffer = buffer;
+        const view = new DataView(atrBuffer);
+
+        // Parse ATR header
+        const magic = view.getUint16(0, true);
+        if (magic !== 0x0296) {
+            throw new Error('Invalid ATR file (bad magic number)');
+        }
+
+        const paragraphs = view.getUint16(2, true);
+        const sectorSize = view.getUint16(4, true);
+        const imageSize = view.getUint32(6, true);
+
+        console.log(`ATR loaded: ${paragraphs} paragraphs, sector size ${sectorSize}, image size ${imageSize}`);
+
+        // Read directory
+        diskFiles = [];
+        const dirStart = 16 + (3 * 128); // Skip header + boot sectors
+
+        for (let i = 0; i < 64; i++) {
+            const entryOffset = dirStart + (i * 16);
+            const flag = view.getUint8(entryOffset);
+
+            if (flag === 0) break; // End of directory
+            if ((flag & 0x80) === 0) continue; // Deleted file
+
+            const sectorMap = view.getUint16(entryOffset + 1, true);
+            const sectorCount = view.getUint16(entryOffset + 3, true);
+
+            let name = '';
+            for (let j = 0; j < 8; j++) {
+                const c = view.getUint8(entryOffset + 5 + j);
+                if (c !== 0x20) name += String.fromCharCode(c);
+            }
+
+            let ext = '';
+            for (let j = 0; j < 3; j++) {
+                const c = view.getUint8(entryOffset + 13 + j);
+                if (c !== 0x20) ext += String.fromCharCode(c);
+            }
+
+            const filename = ext ? `${name}.${ext}` : name;
+            diskFiles.push({ name: filename, sector: sectorMap, count: sectorCount, size: sectorCount * 125 });
+        }
+
+        console.log(`Found ${diskFiles.length} files`);
+
+        // Update UI
+        const fileList = document.getElementById('fileList');
+        fileList.innerHTML = '';
+        diskFiles.forEach(f => {
+            const li = document.createElement('li');
+            li.className = 'file-item';
+            li.innerHTML = `<span>${f.name}</span><span class="size">${f.size}B</span>`;
+            li.onclick = () => loadFile(f);
+            fileList.appendChild(li);
+        });
+
+        document.getElementById('status').textContent = `Loaded ${ATR_FILENAME} (${diskFiles.length} files)`;
+        document.getElementById('saveAtrBtn').disabled = false;
+
+        console.log('Auto-load complete!');
+    } catch (error) {
+        console.error('Auto-load failed:', error);
+        document.getElementById('status').textContent = `Auto-load failed: ${error.message}`;
+    }
+}
+
+// Auto-load on page load
+window.addEventListener('DOMContentLoaded', () => {
+    autoLoadEmbeddedATR();
+});
