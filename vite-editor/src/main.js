@@ -9,8 +9,6 @@ let currentFileOriginalData = null; // Store original decrypted data to preserve
 let currentColor = 0;
 let isDrawing = false;
 let importedImage = null; // Store imported image for processing
-let importedImageMode = 'fit'; // Store current resize mode
-let cropRect = { x: 0, y: 0, width: 160, height: 140 }; // Crop rectangle
 
 // Atari Mode 15 Palette (NTSC - Hue 1 Orange/Gold tones)
 // Based on actual game screenshot - uses warm brown/orange palette
@@ -257,6 +255,19 @@ function canvasToBinary() {
 }
 
 // --- Image Import & Conversion Functions ---
+
+// Store original image and crop selection
+let originalImageData = null; // Store the original Image object
+let cropSelection = { x: 0, y: 0, width: 0, height: 0 }; // Crop selection in original image coordinates
+let isDraggingCrop = false;
+let isMovingCrop = false;
+let isResizingCrop = false;
+let resizeHandle = null; // 'nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'
+let cropDragStart = { x: 0, y: 0 };
+let cropStartState = { x: 0, y: 0, width: 0, height: 0 };
+let originalCanvasScale = 1; // Scale factor for display
+let cropMode = 'auto'; // 'auto', 'fit', 'fill', 'manual'
+
 function getClosestPaletteColor(r, g, b) {
     let minDist = Infinity;
     let bestColor = PALETTE[0];
@@ -430,70 +441,418 @@ function convertTo4Colors(imageData, algorithm = 'floyd-steinberg') {
     return imageData;
 }
 
-function applyImageAdjustmentsAndDither() {
-    if (!importedImage) return;
+// Draw original image on the original canvas
+function drawOriginalImage() {
+    if (!originalImageData) return;
 
-    // Re-draw the original image first (without adjustments)
-    const canvas = document.getElementById('importCanvas');
+    const canvas = document.getElementById('originalCanvas');
     const ctx = canvas.getContext('2d');
 
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, 160, 140);
+    // Set canvas to original image size
+    canvas.width = originalImageData.width;
+    canvas.height = originalImageData.height;
 
-    // Re-apply the current mode (fit/fill/crop)
-    if (importedImageMode === 'crop') {
-        const srcX = Math.max(0, Math.round((importedImage.width - 160) / 2));
-        const srcY = Math.max(0, Math.round((importedImage.height - 140) / 2));
-        const srcW = Math.min(160, importedImage.width);
-        const srcH = Math.min(140, importedImage.height);
-        const dstX = Math.max(0, Math.round((160 - srcW) / 2));
-        const dstY = Math.max(0, Math.round((140 - srcH) / 2));
-        ctx.drawImage(importedImage, srcX, srcY, srcW, srcH, dstX, dstY, srcW, srcH);
-    } else if (importedImageMode === 'fit') {
-        const scale = Math.min(160 / importedImage.width, 140 / importedImage.height);
-        const w = Math.round(importedImage.width * scale);
-        const h = Math.round(importedImage.height * scale);
-        const x = Math.round((160 - w) / 2);
-        const y = Math.round((140 - h) / 2);
-        ctx.drawImage(importedImage, x, y, w, h);
-    } else { // fill
-        const scale = Math.max(160 / importedImage.width, 140 / importedImage.height);
-        const w = Math.round(importedImage.width * scale);
-        const h = Math.round(importedImage.height * scale);
-        const x = Math.round((160 - w) / 2);
-        const y = Math.round((140 - h) / 2);
-        ctx.drawImage(importedImage, x, y, w, h);
+    // Draw the original image
+    ctx.drawImage(originalImageData, 0, 0);
+
+    // Calculate scale for display (max 800x600)
+    const maxWidth = 800;
+    const maxHeight = 600;
+    const scaleX = maxWidth / originalImageData.width;
+    const scaleY = maxHeight / originalImageData.height;
+    originalCanvasScale = Math.min(scaleX, scaleY, 1); // Don't scale up
+
+    // Set display size
+    canvas.style.width = (originalImageData.width * originalCanvasScale) + 'px';
+    canvas.style.height = (originalImageData.height * originalCanvasScale) + 'px';
+
+    // Draw crop box if in manual mode
+    if (cropMode === 'manual') {
+        drawCropBox();
+    } else {
+        document.getElementById('cropBox').style.display = 'none';
     }
+}
+
+// Draw the crop selection box with resize handles
+function drawCropBox() {
+    const cropBox = document.getElementById('cropBox');
+
+    if (cropSelection.width > 0 && cropSelection.height > 0) {
+        cropBox.style.display = 'block';
+        cropBox.style.left = (cropSelection.x * originalCanvasScale) + 'px';
+        cropBox.style.top = (cropSelection.y * originalCanvasScale) + 'px';
+        cropBox.style.width = (cropSelection.width * originalCanvasScale) + 'px';
+        cropBox.style.height = (cropSelection.height * originalCanvasScale) + 'px';
+
+        // Add resize handles if not already present
+        if (!cropBox.querySelector('.resize-handle')) {
+            const handleSize = 10;
+            const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'];
+            handles.forEach(pos => {
+                const handle = document.createElement('div');
+                handle.className = 'resize-handle';
+                handle.dataset.position = pos;
+                handle.style.position = 'absolute';
+                handle.style.width = handleSize + 'px';
+                handle.style.height = handleSize + 'px';
+                handle.style.background = '#4CAF50';
+                handle.style.border = '1px solid white';
+                handle.style.pointerEvents = 'auto';
+                handle.style.cursor = pos + '-resize';
+
+                // Position handles
+                if (pos.includes('n')) handle.style.top = -handleSize/2 + 'px';
+                if (pos.includes('s')) handle.style.bottom = -handleSize/2 + 'px';
+                if (pos.includes('w')) handle.style.left = -handleSize/2 + 'px';
+                if (pos.includes('e')) handle.style.right = -handleSize/2 + 'px';
+                if (pos === 'n' || pos === 's') {
+                    handle.style.left = '50%';
+                    handle.style.marginLeft = -handleSize/2 + 'px';
+                }
+                if (pos === 'e' || pos === 'w') {
+                    handle.style.top = '50%';
+                    handle.style.marginTop = -handleSize/2 + 'px';
+                }
+
+                cropBox.appendChild(handle);
+            });
+
+            // Add move cursor for center
+            cropBox.style.cursor = 'move';
+        }
+    } else {
+        cropBox.style.display = 'none';
+    }
+}
+
+// Calculate crop area based on mode
+function calculateCropArea() {
+    if (!originalImageData) return { x: 0, y: 0, width: 0, height: 0 };
+
+    const targetRatio = 160 / 140;
+    const imageRatio = originalImageData.width / originalImageData.height;
+
+    let x, y, width, height;
+
+    if (cropMode === 'manual' && cropSelection.width > 0 && cropSelection.height > 0) {
+        // Use manual crop selection
+        return { ...cropSelection };
+    } else if (cropMode === 'fit') {
+        // Fit: entire image visible, may have black bars
+        if (imageRatio > targetRatio) {
+            // Image is wider - fit to width
+            width = originalImageData.width;
+            height = width / targetRatio;
+            x = 0;
+            y = (originalImageData.height - height) / 2;
+        } else {
+            // Image is taller - fit to height
+            height = originalImageData.height;
+            width = height * targetRatio;
+            x = (originalImageData.width - width) / 2;
+            y = 0;
+        }
+    } else if (cropMode === 'fill') {
+        // Fill: fills entire frame, may crop image
+        if (imageRatio > targetRatio) {
+            // Image is wider - crop sides
+            height = originalImageData.height;
+            width = height * targetRatio;
+            x = (originalImageData.width - width) / 2;
+            y = 0;
+        } else {
+            // Image is taller - crop top/bottom
+            width = originalImageData.width;
+            height = width / targetRatio;
+            x = 0;
+            y = (originalImageData.height - height) / 2;
+        }
+    } else {
+        // Auto: same as fill
+        if (imageRatio > targetRatio) {
+            height = originalImageData.height;
+            width = height * targetRatio;
+            x = (originalImageData.width - width) / 2;
+            y = 0;
+        } else {
+            width = originalImageData.width;
+            height = width / targetRatio;
+            x = 0;
+            y = (originalImageData.height - height) / 2;
+        }
+    }
+
+    return { x, y, width, height };
+}
+
+// Update the result preview (top canvas)
+function updateResultPreview() {
+    if (!originalImageData) return;
+
+    // Create temporary canvas at original image resolution
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = originalImageData.width;
+    tempCanvas.height = originalImageData.height;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Draw original image at full resolution
+    tempCtx.drawImage(originalImageData, 0, 0);
+
+    // Get image data at original resolution
+    let imgData = tempCtx.getImageData(0, 0, originalImageData.width, originalImageData.height);
 
     // Get adjustment values
     const brightness = parseInt(document.getElementById('brightnessSlider').value);
     const contrast = parseInt(document.getElementById('contrastSlider').value);
     const saturation = parseInt(document.getElementById('saturationSlider').value) / 100;
-    const algorithm = document.getElementById('ditheringAlgorithm').value;
 
-    // Get current image data
-    let imgData = ctx.getImageData(0, 0, 160, 140);
-
-    // Apply adjustments
+    // Apply adjustments to ORIGINAL resolution image
     imgData = adjustImageData(imgData, brightness, contrast, saturation);
 
-    // Apply dithering
-    imgData = convertTo4Colors(imgData, algorithm);
+    // Put adjusted image back to temp canvas
+    tempCtx.putImageData(imgData, 0, 0);
 
-    // Put back to canvas
-    ctx.putImageData(imgData, 0, 0);
+    // Determine crop area based on mode
+    const crop = calculateCropArea();
+    const srcX = crop.x;
+    const srcY = crop.y;
+    const srcW = crop.width;
+    const srcH = crop.height;
+
+    // Create final canvas for scaled output
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = 160;
+    finalCanvas.height = 140;
+    const finalCtx = finalCanvas.getContext('2d');
+
+    // Scale down cropped area to 160x140 with high quality
+    finalCtx.imageSmoothingEnabled = true;
+    finalCtx.imageSmoothingQuality = 'high';
+    finalCtx.drawImage(tempCanvas, srcX, srcY, srcW, srcH, 0, 0, 160, 140);
+
+    // Get scaled image data
+    let scaledImgData = finalCtx.getImageData(0, 0, 160, 140);
+
+    // Apply dithering algorithm to scaled image
+    const algorithm = document.getElementById('ditheringAlgorithm').value;
+    scaledImgData = convertTo4Colors(scaledImgData, algorithm);
+
+    // Display in result preview canvas
+    const resultCanvas = document.getElementById('resultCanvas');
+    const resultCtx = resultCanvas.getContext('2d');
+    resultCtx.fillStyle = 'black';
+    resultCtx.fillRect(0, 0, 160, 140);
+    resultCtx.putImageData(scaledImgData, 0, 0);
 }
 
-function resizeImage(img, mode) {
-    importedImageMode = mode;
-    applyImageAdjustmentsAndDither();
+// Get which resize handle is under the mouse
+function getResizeHandle(mouseX, mouseY) {
+    if (cropSelection.width === 0 || cropSelection.height === 0) return null;
+
+    const handleSize = 15; // Larger hit area
+    const x = cropSelection.x * originalCanvasScale;
+    const y = cropSelection.y * originalCanvasScale;
+    const w = cropSelection.width * originalCanvasScale;
+    const h = cropSelection.height * originalCanvasScale;
+
+    // Check corners first
+    if (Math.abs(mouseX - x) < handleSize && Math.abs(mouseY - y) < handleSize) return 'nw';
+    if (Math.abs(mouseX - (x + w)) < handleSize && Math.abs(mouseY - y) < handleSize) return 'ne';
+    if (Math.abs(mouseX - x) < handleSize && Math.abs(mouseY - (y + h)) < handleSize) return 'sw';
+    if (Math.abs(mouseX - (x + w)) < handleSize && Math.abs(mouseY - (y + h)) < handleSize) return 'se';
+
+    // Check edges
+    if (Math.abs(mouseY - y) < handleSize && mouseX > x && mouseX < x + w) return 'n';
+    if (Math.abs(mouseY - (y + h)) < handleSize && mouseX > x && mouseX < x + w) return 's';
+    if (Math.abs(mouseX - x) < handleSize && mouseY > y && mouseY < y + h) return 'w';
+    if (Math.abs(mouseX - (x + w)) < handleSize && mouseY > y && mouseY < y + h) return 'e';
+
+    return null;
 }
 
-function cropImage(img) {
-    importedImageMode = 'crop';
-    applyImageAdjustmentsAndDither();
+// Check if mouse is inside crop box
+function isInsideCropBox(mouseX, mouseY) {
+    if (cropSelection.width === 0 || cropSelection.height === 0) return false;
+
+    const x = cropSelection.x * originalCanvasScale;
+    const y = cropSelection.y * originalCanvasScale;
+    const w = cropSelection.width * originalCanvasScale;
+    const h = cropSelection.height * originalCanvasScale;
+
+    return mouseX > x && mouseX < x + w && mouseY > y && mouseY < y + h;
+}
+
+// Setup crop selection on original canvas
+function setupCropSelection() {
+    const canvas = document.getElementById('originalCanvas');
+    const cropBox = document.getElementById('cropBox');
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (!originalImageData || cropMode !== 'manual') return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const x = mouseX / originalCanvasScale;
+        const y = mouseY / originalCanvasScale;
+
+        // Check if clicking on resize handle
+        resizeHandle = getResizeHandle(mouseX, mouseY);
+
+        if (resizeHandle) {
+            isResizingCrop = true;
+            cropStartState = { ...cropSelection };
+            cropDragStart = { x, y };
+        } else if (isInsideCropBox(mouseX, mouseY)) {
+            // Moving crop box
+            isMovingCrop = true;
+            cropDragStart = { x, y };
+            cropStartState = { ...cropSelection };
+        } else {
+            // Creating new crop box
+            isDraggingCrop = true;
+            cropDragStart = { x, y };
+            cropSelection = { x, y, width: 0, height: 0 };
+        }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (!originalImageData) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const x = mouseX / originalCanvasScale;
+        const y = mouseY / originalCanvasScale;
+
+        // Update cursor
+        if (cropMode === 'manual' && !isDraggingCrop && !isMovingCrop && !isResizingCrop) {
+            const handle = getResizeHandle(mouseX, mouseY);
+            if (handle) {
+                canvas.style.cursor = handle + '-resize';
+            } else if (isInsideCropBox(mouseX, mouseY)) {
+                canvas.style.cursor = 'move';
+            } else {
+                canvas.style.cursor = 'crosshair';
+            }
+        }
+
+        if (isMovingCrop) {
+            // Move crop box
+            const dx = x - cropDragStart.x;
+            const dy = y - cropDragStart.y;
+
+            cropSelection.x = cropStartState.x + dx;
+            cropSelection.y = cropStartState.y + dy;
+
+            // Clamp to image bounds
+            cropSelection.x = Math.max(0, Math.min(cropSelection.x, originalImageData.width - cropSelection.width));
+            cropSelection.y = Math.max(0, Math.min(cropSelection.y, originalImageData.height - cropSelection.height));
+
+            drawCropBox();
+        } else if (isResizingCrop) {
+            // Resize crop box
+            const dx = x - cropDragStart.x;
+            const dy = y - cropDragStart.y;
+            const targetRatio = 160 / 140;
+
+            let newX = cropStartState.x;
+            let newY = cropStartState.y;
+            let newW = cropStartState.width;
+            let newH = cropStartState.height;
+
+            // Apply resize based on handle
+            if (resizeHandle.includes('e')) newW = cropStartState.width + dx;
+            if (resizeHandle.includes('w')) { newW = cropStartState.width - dx; newX = cropStartState.x + dx; }
+            if (resizeHandle.includes('s')) newH = cropStartState.height + dy;
+            if (resizeHandle.includes('n')) { newH = cropStartState.height - dy; newY = cropStartState.y + dy; }
+
+            // Maintain aspect ratio
+            if (resizeHandle.length === 2) { // Corner handles
+                // Use the larger dimension change
+                if (Math.abs(newW / cropStartState.width) > Math.abs(newH / cropStartState.height)) {
+                    newH = newW / targetRatio;
+                    if (resizeHandle.includes('n')) newY = cropStartState.y + cropStartState.height - newH;
+                } else {
+                    newW = newH * targetRatio;
+                    if (resizeHandle.includes('w')) newX = cropStartState.x + cropStartState.width - newW;
+                }
+            } else { // Edge handles
+                if (resizeHandle === 'e' || resizeHandle === 'w') {
+                    newH = newW / targetRatio;
+                } else {
+                    newW = newH * targetRatio;
+                }
+                if (resizeHandle === 'w') newX = cropStartState.x + cropStartState.width - newW;
+                if (resizeHandle === 'n') newY = cropStartState.y + cropStartState.height - newH;
+            }
+
+            // Ensure minimum size
+            if (newW > 10 && newH > 10) {
+                cropSelection = { x: newX, y: newY, width: newW, height: newH };
+
+                // Clamp to image bounds
+                if (cropSelection.x < 0) { cropSelection.width += cropSelection.x; cropSelection.x = 0; }
+                if (cropSelection.y < 0) { cropSelection.height += cropSelection.y; cropSelection.y = 0; }
+                if (cropSelection.x + cropSelection.width > originalImageData.width) {
+                    cropSelection.width = originalImageData.width - cropSelection.x;
+                }
+                if (cropSelection.y + cropSelection.height > originalImageData.height) {
+                    cropSelection.height = originalImageData.height - cropSelection.y;
+                }
+
+                drawCropBox();
+            }
+        } else if (isDraggingCrop) {
+            // Creating new crop box
+            let width = x - cropDragStart.x;
+            let height = y - cropDragStart.y;
+
+            // Maintain aspect ratio
+            const targetRatio = 160 / 140;
+            if (Math.abs(width / height) > targetRatio) {
+                width = height * targetRatio * Math.sign(width);
+            } else {
+                height = width / targetRatio * Math.sign(height);
+            }
+
+            cropSelection = {
+                x: width < 0 ? cropDragStart.x + width : cropDragStart.x,
+                y: height < 0 ? cropDragStart.y + height : cropDragStart.y,
+                width: Math.abs(width),
+                height: Math.abs(height)
+            };
+
+            // Clamp to image bounds
+            cropSelection.x = Math.max(0, Math.min(cropSelection.x, originalImageData.width - cropSelection.width));
+            cropSelection.y = Math.max(0, Math.min(cropSelection.y, originalImageData.height - cropSelection.height));
+            cropSelection.width = Math.min(cropSelection.width, originalImageData.width - cropSelection.x);
+            cropSelection.height = Math.min(cropSelection.height, originalImageData.height - cropSelection.y);
+
+            drawCropBox();
+        }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+        if (isDraggingCrop || isMovingCrop || isResizingCrop) {
+            isDraggingCrop = false;
+            isMovingCrop = false;
+            isResizingCrop = false;
+            resizeHandle = null;
+            updateResultPreview();
+        }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+        if (isDraggingCrop || isMovingCrop || isResizingCrop) {
+            isDraggingCrop = false;
+            isMovingCrop = false;
+            isResizingCrop = false;
+            resizeHandle = null;
+            updateResultPreview();
+        }
+    });
 }
 
 // Event Listeners
@@ -541,8 +900,16 @@ document.getElementById('pngInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if(!file) return;
 
-    importedImage = new Image();
-    importedImage.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+        // Store original image
+        originalImageData = img;
+        importedImage = img; // Keep for compatibility
+
+        // Reset crop selection and mode
+        cropSelection = { x: 0, y: 0, width: 0, height: 0 };
+        cropMode = 'fill'; // Default to fill mode
+
         // Show import section
         document.getElementById('importSection').style.display = 'block';
 
@@ -555,32 +922,38 @@ document.getElementById('pngInput').addEventListener('change', (e) => {
         document.getElementById('contrastValue').textContent = '0';
         document.getElementById('saturationValue').textContent = '1.0';
 
-        // Default: resize to fit
-        resizeImage(importedImage, 'fit');
+        // Update button states
+        updateCropModeButtons();
+
+        // Draw original image on bottom canvas
+        drawOriginalImage();
+
+        // Update result preview on top canvas
+        updateResultPreview();
     };
-    importedImage.src = URL.createObjectURL(file);
+    img.src = URL.createObjectURL(file);
     e.target.value = ''; // Reset input
 });
 
 // Image adjustment sliders
 document.getElementById('brightnessSlider').addEventListener('input', (e) => {
     document.getElementById('brightnessValue').textContent = e.target.value;
-    if (importedImage) applyImageAdjustmentsAndDither();
+    if (originalImageData) updateResultPreview();
 });
 
 document.getElementById('contrastSlider').addEventListener('input', (e) => {
     document.getElementById('contrastValue').textContent = e.target.value;
-    if (importedImage) applyImageAdjustmentsAndDither();
+    if (originalImageData) updateResultPreview();
 });
 
 document.getElementById('saturationSlider').addEventListener('input', (e) => {
     const value = (parseInt(e.target.value) / 100).toFixed(1);
     document.getElementById('saturationValue').textContent = value;
-    if (importedImage) applyImageAdjustmentsAndDither();
+    if (originalImageData) updateResultPreview();
 });
 
 document.getElementById('ditheringAlgorithm').addEventListener('change', () => {
-    if (importedImage) applyImageAdjustmentsAndDither();
+    if (originalImageData) updateResultPreview();
 });
 
 document.getElementById('resetAdjustmentsBtn').addEventListener('click', () => {
@@ -591,40 +964,87 @@ document.getElementById('resetAdjustmentsBtn').addEventListener('click', () => {
     document.getElementById('brightnessValue').textContent = '0';
     document.getElementById('contrastValue').textContent = '0';
     document.getElementById('saturationValue').textContent = '1.0';
-    if (importedImage) applyImageAdjustmentsAndDither();
+    if (originalImageData) updateResultPreview();
 });
 
-document.getElementById('cropBtn').addEventListener('click', () => {
-    if (!importedImage) return;
-    cropImage(importedImage);
+// Update crop mode button states
+function updateCropModeButtons() {
+    const autoBtn = document.getElementById('autoFillBtn');
+    const fitBtn = document.getElementById('fitBtn');
+    const manualBtn = document.getElementById('manualCropBtn');
+    const helpText = document.getElementById('cropModeHelp');
+
+    // Reset all buttons
+    [autoBtn, fitBtn, manualBtn].forEach(btn => {
+        btn.classList.remove('primary');
+        btn.style.background = '#444';
+    });
+
+    // Highlight active button
+    if (cropMode === 'fill') {
+        autoBtn.classList.add('primary');
+        autoBtn.style.background = '#005a9e';
+        helpText.textContent = 'Auto Fill: Fills frame, may crop edges to preserve aspect ratio';
+    } else if (cropMode === 'fit') {
+        fitBtn.classList.add('primary');
+        fitBtn.style.background = '#005a9e';
+        helpText.textContent = 'Fit: Shows entire image, may have black bars';
+    } else if (cropMode === 'manual') {
+        manualBtn.classList.add('primary');
+        manualBtn.style.background = '#005a9e';
+        helpText.textContent = 'Manual Crop: Drag to create crop area, drag edges/corners to resize, drag center to move';
+    }
+}
+
+// Crop mode buttons
+document.getElementById('autoFillBtn').addEventListener('click', () => {
+    cropMode = 'fill';
+    cropSelection = { x: 0, y: 0, width: 0, height: 0 };
+    updateCropModeButtons();
+    drawOriginalImage();
+    updateResultPreview();
 });
 
-document.getElementById('resizeFitBtn').addEventListener('click', () => {
-    if (!importedImage) return;
-    resizeImage(importedImage, 'fit');
+document.getElementById('fitBtn').addEventListener('click', () => {
+    cropMode = 'fit';
+    cropSelection = { x: 0, y: 0, width: 0, height: 0 };
+    updateCropModeButtons();
+    drawOriginalImage();
+    updateResultPreview();
 });
 
-document.getElementById('resizeFillBtn').addEventListener('click', () => {
-    if (!importedImage) return;
-    resizeImage(importedImage, 'fill');
+document.getElementById('manualCropBtn').addEventListener('click', () => {
+    cropMode = 'manual';
+    // Initialize crop to full image with correct aspect ratio
+    const crop = calculateCropArea();
+    cropSelection = { ...crop };
+    updateCropModeButtons();
+    drawOriginalImage();
+    updateResultPreview();
 });
+
+
 
 document.getElementById('applyImportBtn').addEventListener('click', () => {
-    // Copy from import canvas to editor canvas
-    const importCanvas = document.getElementById('importCanvas');
+    // Copy from result canvas to editor canvas
+    const resultCanvas = document.getElementById('resultCanvas');
     const editorCanvas = document.getElementById('editorCanvas');
     const editorCtx = editorCanvas.getContext('2d');
 
-    editorCtx.drawImage(importCanvas, 0, 0);
+    editorCtx.drawImage(resultCanvas, 0, 0);
 
     // Hide import section
     document.getElementById('importSection').style.display = 'none';
     importedImage = null;
+    originalImageData = null;
+    cropSelection = { x: 0, y: 0, width: 0, height: 0 };
 });
 
 document.getElementById('cancelImportBtn').addEventListener('click', () => {
     document.getElementById('importSection').style.display = 'none';
     importedImage = null;
+    originalImageData = null;
+    cropSelection = { x: 0, y: 0, width: 0, height: 0 };
 });
 
 document.getElementById('exportPngBtn').addEventListener('click', () => {
@@ -1042,4 +1462,7 @@ document.addEventListener('keydown', (e) => {
 window.addEventListener('DOMContentLoaded', () => {
     console.log('Page loaded, auto-loading embedded ATR...');
     autoLoadEmbeddedATR();
+
+    // Setup crop selection on original canvas
+    setupCropSelection();
 });

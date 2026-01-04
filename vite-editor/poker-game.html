@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strip Poker - Atari Style</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .game-container {
+            max-width: 1200px;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 10px 20px;
+            background: #607D8B;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .back-button:hover {
+            background: #455A64;
+        }
+
+        .game-status {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status-section {
+            background: rgba(76, 175, 80, 0.2);
+            padding: 10px;
+            border-radius: 5px;
+            margin: 5px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .cards-area {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .player-hand {
+            text-align: center;
+            margin: 10px;
+        }
+
+        .card {
+            display: inline-block;
+            width: 60px;
+            height: 84px;
+            border: 2px solid #fff;
+            border-radius: 5px;
+            margin: 2px;
+            background: #fff;
+            color: #000;
+            font-size: 12px;
+            text-align: center;
+            line-height: 80px;
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: scale(1.1);
+        }
+
+        .card.red {
+            color: #e74c3c;
+        }
+
+        .card.black {
+            color: #2c3e50;
+        }
+
+        .opponent-area {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .opponent-avatar {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            border: 3px solid #fff;
+        }
+
+        .clothing-strip {
+            display: flex;
+            justify-content: center;
+            margin: 10px 0;
+        }
+
+        .clothing-item {
+            width: 40px;
+            height: 40px;
+            margin: 5px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            position: relative;
+            transition: opacity 0.5s ease;
+        }
+
+        .clothing-item.clothed {
+            background: #4CAF50;
+        }
+
+        .clothing-item.stripped {
+            background: transparent;
+            opacity: 0.3;
+        }
+
+        .betting-area {
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(76, 175, 80, 0.1);
+            border-radius: 10px;
+        }
+
+        .bet-amount {
+            font-size: 24px;
+            margin: 10px 0;
+            color: #4CAF50;
+        }
+
+        .betting-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .bet-btn {
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+        }
+
+        .bet-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .call-btn {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .raise-btn {
+            background: #FF9800;
+            color: white;
+        }
+
+        .drop-btn {
+            background: #f44336;
+            color: white;
+        }
+
+        .stay-btn {
+            background: #2196F3;
+            color: white;
+        }
+
+        .dialogue-area {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            min-height: 100px;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .opponent-dialogue {
+            font-style: italic;
+            color: #ffeb3b;
+            font-size: 16px;
+        }
+
+        .game-message {
+            text-align: center;
+            font-size: 18px;
+            color: #4CAF50;
+            margin: 10px 0;
+        }
+
+        .controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .control-btn {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #607D8B;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+        }
+
+        .control-btn:hover {
+            background: #455A64;
+        }
+
+        .pot-display {
+            font-size: 20px;
+            color: #FFEB3B;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .game-container {
+                padding: 10px;
+            }
+            
+            .card {
+                width: 50px;
+                height: 70px;
+                line-height: 66px;
+                font-size: 10px;
+            }
+            
+            .opponent-avatar {
+                width: 100px;
+                height: 100px;
+                font-size: 32px;
+            }
+            
+            .back-button {
+                position: relative;
+                top: 0;
+                left: 0;
+                margin-bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <a href="/" class="back-button">← Back to Editor</a>
+        
+        <div class="header">
+            <h1>🎮 STRIP POKER - ATARI STYLE 🎮</h1>
+            <p>Based on reverse-engineered Atari 8-bit BASIC code</p>
+        </div>
+
+        <div class="game-status">
+            <div class="status-section">
+                <h3>Player Status</h3>
+                <p>Pot: $<span id="player-pot">100</span></p>
+                <p>Bet: $<span id="player-bet">0</span></p>
+            </div>
+            <div class="status-section">
+                <h3>Opponent Status</h3>
+                <p>Pot: $<span id="opponent-pot">100</span></p>
+                <p>Bet: $<span id="opponent-bet">0</span></p>
+            </div>
+            <div class="status-section">
+                <h3>Game Info</h3>
+                <p>Round: <span id="round-number">1</span></p>
+                <p>Ante: $<span id="ante-amount">5</span></p>
+                <p>Total Pot: $<span id="total-pot">0</span></p>
+            </div>
+        </div>
+
+        <div class="opponent-area">
+            <h2 id="opponent-name">Suzy</h2>
+            <div class="opponent-avatar" id="opponent-avatar">👩</div>
+            <div class="clothing-strip" id="clothing-strip">
+                <div class="clothing-item clothed" id="top" title="Top"></div>
+                <div class="clothing-item clothed" id="pants" title="Pants"></div>
+                <div class="clothing-item clothed" id="undies" title="Undies"></div>
+            </div>
+        </div>
+
+        <div class="cards-area">
+            <div class="player-hand">
+                <h3>Your Hand</h3>
+                <div id="player-cards"></div>
+            </div>
+            <div class="player-hand">
+                <h3>Opponent's Hand</h3>
+                <div id="opponent-cards"></div>
+            </div>
+        </div>
+
+        <div class="dialogue-area">
+            <div class="opponent-dialogue" id="dialogue-text">
+                Ready to play some poker? Don't bet more than you can afford to lose!
+            </div>
+        </div>
+
+        <div class="betting-area">
+            <div class="game-message" id="game-message"></div>
+            <div class="bet-amount">
+                Current Bet: $<span id="current-bet">0</span>
+            </div>
+            <div class="betting-buttons">
+                <button class="bet-btn call-btn" onclick="game.call()">CALL</button>
+                <button class="bet-btn raise-btn" onclick="game.raise()">RAISE</button>
+                <button class="bet-btn stay-btn" onclick="game.stay()">STAY</button>
+                <button class="bet-btn drop-btn" onclick="game.drop()">DROP</button>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="control-btn" onclick="game.newGame()">New Game</button>
+            <button class="control-btn" onclick="game.newRound()">New Round</button>
+            <button class="control-btn" onclick="game.showRules()">Rules</button>
+        </div>
+    </div>
+
+    <script>
+        class StripPokerGame {
+            constructor() {
+                this.playerPot = 100;
+                this.opponentPot = 100;
+                this.playerBet = 0;
+                this.opponentBet = 0;
+                this.currentBet = 0;
+                this.round = 1;
+                this.ante = 5;
+                this.totalPot = 0;
+                this.playerHand = [];
+                this.opponentHand = [];
+                this.deck = [];
+                this.currentOpponent = 0;
+                this.gamePhase = 'betting'; // betting, showdown, gameover
+                
+                // Opponent data extracted from Atari BASIC
+                this.opponents = [
+                    {
+                        name: 'Suzy',
+                        avatar: '👩',
+                        dialogue: this.getDialogueSet1(),
+                        clothing: ['top', 'pants', 'undies']
+                    },
+                    {
+                        name: 'Melissa', 
+                        avatar: '👱‍♀️',
+                        dialogue: this.getDialogueSet2(),
+                        clothing: ['top', 'pants', 'undies']
+                    }
+                ];
+                
+                this.init();
+            }
+
+            getDialogueSet1() {
+                return [
+                    "I'M ON A LUCKY STREAK NOW!",
+                    "TONIGHT'S MY LUCKY NIGHT.",
+                    "YOU BET ON THAT HAND?",
+                    "I WIN...I WIN...I WIN AGAIN!!!",
+                    "I'M NOT BAD FOR A BEGINNER!",
+                    "THIS IS GOING TO BE FUN!",
+                    "SAY, ANY REAL PLAYERS AROUND?",
+                    "I OWN THE CARDS TONIGHT, HONEY",
+                    "I'M TAKING CANDY FROM A BABY!",
+                    "DID YOU THINK I WAS BLUFFING?",
+                    "IS IT GETTING COLD OUT THERE?",
+                    "NOTHING UP MY SLEEVES...",
+                    "WERE YOU CHASING A RAINBOW???",
+                    "READ 'EM AND WEEP HONEY!",
+                    "YOUR LUCK HAS TO RUN OUT...",
+                    "YOU LUCKY *!#%&*+$#!@",
+                    "WIPE THAT GRIN OFF YOUR FACE!",
+                    "STOP WINNING, I'M GETTING COLD",
+                    "HEY! ENOUGH IS ENOUGH ALREADY!",
+                    "SO YOU'VE NEVER PLAYED BEFORE?",
+                    "LUCKY...LUCKY...LUCKY...",
+                    "NEXT DEAL...I CUT THE CARDS.",
+                    "BRRR...I FEEL A DRAFT.",
+                    "YOUR MOM WEARS ARMY BOOTS...",
+                    "SHIT!",
+                    "I HOPE YOUR GLASSES STEAM UP!",
+                    "PLEASE! PLEASE! PUSH RESET!!!",
+                    "WHO DEALT THESE CRUMMY CARDS?",
+                    "ARE YOU PEEKING AT MY CARDS?"
+                ];
+            }
+
+            getDialogueSet2() {
+                return [
+                    "I'M ON A LUCKY STREAK NOW!",
+                    "GIVE UP?",
+                    "OHHH...I LIKE A MAN WITH GUTS!",
+                    "HAVE YOU EVER HEARD OF ODDS?",
+                    "LOOK OUT! I'M WARMING UP!",
+                    "THIS IS GOING TO BE FUN!",
+                    "THIS ISN'T OLD MAID YOU KNOW.",
+                    "I'M GONNA HANG YOU OUT TO DRY!",
+                    "YOU TWERP!",
+                    "DID YOU THINK I WAS BLUFFING?",
+                    "IS IT GETTING COLD OUT THERE?",
+                    "I LOVE BEING DEALER.",
+                    "WHAT HAVE YOU BEEN SMOKING?",
+                    "NOW..NOW..GROWN MEN DON'T CRY.",
+                    "READ 'EM AND WEEP HONEY!!!",
+                    "ARE YOU MARKING THE CARDS?",
+                    "YOU LUCKY #^*#!@&%*#$!",
+                    "WIPE THAT GRIN OFF YOUR FACE!",
+                    "CUT IT OUT, I'M GETTING COLD!",
+                    "I REALLY HATE THIS GAME!!!",
+                    "SO YOU'VE NEVER PLAYED BEFORE?",
+                    "LUCKY...LUCKY...LUCKY...",
+                    "NEXT DEAL...I CUT THE CARDS.",
+                    "I'M NOT LIKING THIS...",
+                    "THESE CARDS REALLY STINK!",
+                    "NUTS...",
+                    "A BAD TRANSISTOR MADE ME BET!",
+                    "IT'S A GAME! STOP DROOLING!!!",
+                    "WHO DEALT THESE CRUMMY CARDS?",
+                    "ICK...I'M GETTING GOOSEBUMPS."
+                ];
+            }
+
+            init() {
+                this.updateDisplay();
+                this.newRound();
+            }
+
+            createDeck() {
+                const suits = ['♠', '♥', '♦', '♣'];
+                const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+                const deck = [];
+                
+                for (let suit of suits) {
+                    for (let rank of ranks) {
+                        deck.push({ suit, rank, value: this.getCardValue(rank) });
+                    }
+                }
+                
+                return this.shuffleDeck(deck);
+            }
+
+            getCardValue(rank) {
+                const values = {
+                    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8,
+                    '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+                };
+                return values[rank];
+            }
+
+            shuffleDeck(deck) {
+                for (let i = deck.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [deck[i], deck[j]] = [deck[j], deck[i]];
+                }
+                return deck;
+            }
+
+            evaluateHand(hand) {
+                // Simplified poker hand evaluation
+                const values = hand.map(card => card.value).sort((a, b) => b - a);
+                const suits = hand.map(card => card.suit);
+                
+                // Check for flush
+                const isFlush = suits.every(suit => suit === suits[0]);
+                
+                // Check for straight
+                const isStraight = this.isStraight(values);
+                
+                // Check for pairs, three of a kind, etc.
+                const valueCounts = {};
+                values.forEach(value => {
+                    valueCounts[value] = (valueCounts[value] || 0) + 1;
+                });
+                
+                const counts = Object.values(valueCounts).sort((a, b) => b - a);
+                
+                // Hand rankings (higher number = better hand)
+                if (isStraight && isFlush && values[0] === 14) return { rank: 9, name: 'Royal Flush' };
+                if (isStraight && isFlush) return { rank: 8, name: 'Straight Flush' };
+                if (counts[0] === 4) return { rank: 7, name: 'Four of a Kind' };
+                if (counts[0] === 3 && counts[1] === 2) return { rank: 6, name: 'Full House' };
+                if (isFlush) return { rank: 5, name: 'Flush' };
+                if (isStraight) return { rank: 4, name: 'Straight' };
+                if (counts[0] === 3) return { rank: 3, name: 'Three of a Kind' };
+                if (counts[0] === 2 && counts[1] === 2) return { rank: 2, name: 'Two Pair' };
+                if (counts[0] === 2) return { rank: 1, name: 'One Pair' };
+                
+                return { rank: 0, name: 'High Card', highCard: values[0] };
+            }
+
+            isStraight(values) {
+                for (let i = 0; i < values.length - 1; i++) {
+                    if (values[i] - 1 !== values[i + 1]) return false;
+                }
+                return true;
+            }
+
+            newRound() {
+                this.deck = this.createDeck();
+                this.playerHand = this.deck.slice(0, 5);
+                this.opponentHand = this.deck.slice(5, 10);
+                this.deck = this.deck.slice(10);
+                
+                // Reset bets and collect ante
+                this.playerBet = this.ante;
+                this.opponentBet = this.ante;
+                this.playerPot -= this.ante;
+                this.opponentPot -= this.ante;
+                this.totalPot = this.playerBet + this.opponentBet;
+                this.currentBet = Math.max(this.playerBet, this.opponentBet);
+                
+                this.updateDisplay();
+                this.showDialogue("ANTE UP! Let's see what kind of cards we're dealing with.");
+                
+                // Simulate opponent AI decision
+                setTimeout(() => {
+                    this.opponentAction();
+                }, 2000);
+            }
+
+            opponentAction() {
+                const opponent = this.opponents[this.currentOpponent];
+                const playerEval = this.evaluateHand(this.playerHand);
+                const opponentEval = this.evaluateHand(this.opponentHand);
+                
+                // Simple AI: bet based on hand strength
+                let action = 'call';
+                const rand = Math.random();
+                
+                if (opponentEval.rank >= 5) { // Good hand
+                    action = rand < 0.7 ? 'raise' : 'call';
+                } else if (opponentEval.rank >= 2) { // Decent hand
+                    action = rand < 0.4 ? 'raise' : 'call';
+                } else if (opponentEval.rank === 1) { // Pair
+                    action = rand < 0.6 ? 'call' : 'drop';
+                } else { // Weak hand
+                    action = rand < 0.8 ? 'call' : 'drop';
+                }
+                
+                this.executeOpponentAction(action);
+            }
+
+            executeOpponentAction(action) {
+                const opponent = this.opponents[this.currentOpponent];
+                
+                switch(action) {
+                    case 'raise':
+                        this.opponentBet += this.ante;
+                        this.opponentPot -= this.ante;
+                        this.totalPot += this.ante;
+                        this.currentBet = this.opponentBet;
+                        this.showDialogue(this.getRandomDialogue() + " I RAISE!");
+                        break;
+                    case 'call':
+                        this.showDialogue(this.getRandomDialogue() + " I CALL.");
+                        break;
+                    case 'drop':
+                        this.showDialogue(this.getRandomDialogue() + " I DROP!");
+                        this.playerWins();
+                        return;
+                }
+                
+                this.updateDisplay();
+            }
+
+            getRandomDialogue() {
+                const opponent = this.opponents[this.currentOpponent];
+                return opponent.dialogue[Math.floor(Math.random() * opponent.dialogue.length)];
+            }
+
+            call() {
+                if (this.playerBet < this.currentBet) {
+                    const callAmount = this.currentBet - this.playerBet;
+                    this.playerBet = this.currentBet;
+                    this.playerPot -= callAmount;
+                    this.totalPot += callAmount;
+                    
+                    this.showDialogue("I CALL!");
+                    this.showdown();
+                }
+                this.updateDisplay();
+            }
+
+            raise() {
+                if (this.playerPot >= this.ante) {
+                    this.playerBet += this.ante;
+                    this.playerPot -= this.ante;
+                    this.totalPot += this.ante;
+                    this.currentBet = this.playerBet;
+                    
+                    this.showDialogue("I RAISE!");
+                    setTimeout(() => this.opponentAction(), 1500);
+                }
+                this.updateDisplay();
+            }
+
+            stay() {
+                this.showDialogue("I STAY!");
+                this.showdown();
+            }
+
+            drop() {
+                this.showDialogue("I DROP!");
+                this.opponentWins();
+            }
+
+            showdown() {
+                const playerEval = this.evaluateHand(this.playerHand);
+                const opponentEval = this.evaluateHand(this.opponentHand);
+                
+                let result = "";
+                if (playerEval.rank > opponentEval.rank) {
+                    result = `YOU WIN! ${playerEval.name} beats ${opponentEval.name}`;
+                    this.playerWins();
+                } else if (opponentEval.rank > playerEval.rank) {
+                    result = `YOU LOSE! ${opponentEval.name} beats ${playerEval.name}`;
+                    this.opponentWins();
+                } else {
+                    // Tie-breaker for same rank hands
+                    if (playerEval.rank === 0) { // High card
+                        const playerHigh = Math.max(...this.playerHand.map(c => c.value));
+                        const oppHigh = Math.max(...this.opponentHand.map(c => c.value));
+                        if (playerHigh > oppHigh) {
+                            result = `TIE BREAKER! Your high card ${playerHigh} wins!`;
+                            this.playerWins();
+                        } else {
+                            result = `TIE BREAKER! Opponent's high card ${oppHigh} wins!`;
+                            this.opponentWins();
+                        }
+                    } else {
+                        result = "WE TIED...NEW DEAL";
+                        this.tie();
+                    }
+                }
+                
+                this.showGameMessage(result);
+            }
+
+            playerWins() {
+                this.playerPot += this.totalPot;
+                this.totalPot = 0;
+                this.stripOpponent();
+                this.showGameMessage("YOU WIN THE POT!");
+            }
+
+            opponentWins() {
+                this.opponentPot += this.totalPot;
+                this.totalPot = 0;
+                this.showGameMessage("OPPONENT WINS THE POT!");
+            }
+
+            tie() {
+                this.playerPot += Math.floor(this.totalPot / 2);
+                this.opponentPot += Math.floor(this.totalPot / 2);
+                this.totalPot = 0;
+                this.showGameMessage("SPLIT POT - TIE GAME!");
+            }
+
+            stripOpponent() {
+                const opponent = this.opponents[this.currentOpponent];
+                const strippedItems = opponent.clothing.filter(item => 
+                    document.getElementById(item).classList.contains('clothed')
+                );
+                
+                if (strippedItems.length > 0) {
+                    const itemToStrip = strippedItems[strippedItems.length - 1];
+                    document.getElementById(itemToStrip).classList.remove('clothed');
+                    document.getElementById(itemToStrip).classList.add('stripped');
+                    
+                    this.showDialogue("LOOKS LIKE YOU WIN THIS ROUND! *removes clothing*");
+                    
+                    // Check if opponent is fully stripped
+                    if (strippedItems.length === opponent.clothing.length) {
+                        setTimeout(() => {
+                            this.showGameMessage(`YOU WIN! ${opponent.name} IS COMPLETELY STRIPPED!`);
+                            this.nextOpponent();
+                        }, 3000);
+                    }
+                }
+            }
+
+            nextOpponent() {
+                this.currentOpponent = (this.currentOpponent + 1) % this.opponents.length;
+                const opponent = this.opponents[this.currentOpponent];
+                
+                // Reset clothing
+                opponent.clothing.forEach(item => {
+                    document.getElementById(item).classList.remove('stripped');
+                    document.getElementById(item).classList.add('clothed');
+                });
+                
+                this.showDialogue(`Meet your next opponent: ${opponent.name}!`);
+                this.updateDisplay();
+            }
+
+            showDialogue(text) {
+                document.getElementById('dialogue-text').textContent = text;
+            }
+
+            showGameMessage(text) {
+                document.getElementById('game-message').textContent = text;
+                setTimeout(() => {
+                    document.getElementById('game-message').textContent = "";
+                }, 3000);
+            }
+
+            updateDisplay() {
+                // Update pots and bets
+                document.getElementById('player-pot').textContent = this.playerPot;
+                document.getElementById('opponent-pot').textContent = this.opponentPot;
+                document.getElementById('player-bet').textContent = this.playerBet;
+                document.getElementById('opponent-bet').textContent = this.opponentBet;
+                document.getElementById('current-bet').textContent = this.currentBet;
+                document.getElementById('total-pot').textContent = this.totalPot;
+                document.getElementById('round-number').textContent = this.round;
+                
+                // Update opponent info
+                const opponent = this.opponents[this.currentOpponent];
+                document.getElementById('opponent-name').textContent = opponent.name;
+                document.getElementById('opponent-avatar').textContent = opponent.avatar;
+                
+                // Update cards
+                this.displayCards('player-cards', this.playerHand);
+                this.displayCards('opponent-cards', this.opponentHand);
+            }
+
+            displayCards(containerId, hand) {
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                
+                hand.forEach(card => {
+                    const cardElement = document.createElement('div');
+                    cardElement.className = `card ${card.suit === '♥' || card.suit === '♦' ? 'red' : 'black'}`;
+                    cardElement.textContent = `${card.rank}${card.suit}`;
+                    container.appendChild(cardElement);
+                });
+            }
+
+            newGame() {
+                this.playerPot = 100;
+                this.opponentPot = 100;
+                this.round = 1;
+                this.currentOpponent = 0;
+                
+                // Reset all clothing
+                this.opponents.forEach(opponent => {
+                    opponent.clothing.forEach(item => {
+                        const element = document.getElementById(item);
+                        if (element) {
+                            element.classList.remove('stripped');
+                            element.classList.add('clothed');
+                        }
+                    });
+                });
+                
+                this.showDialogue("New game! Let's start fresh.");
+                this.newRound();
+            }
+
+            showRules() {
+                alert(`STRIP POKER RULES:
+
+1. Each player starts with $100
+2. Each round starts with a $5 ante
+3. Betting order: Call, Raise ($5), Stay, or Drop
+4. Winner takes the pot
+5. Losing player removes one item of clothing
+6. First to completely strip opponent wins!
+
+Hand Rankings:
+- Royal Flush (A,K,Q,J,10 same suit)
+- Straight Flush (consecutive same suit)
+- Four of a Kind (4 same cards)
+- Full House (3+2 same cards)
+- Flush (same suit)
+- Straight (consecutive values)
+- Three of a Kind (3 same cards)
+- Two Pair (2 pairs)
+- One Pair (2 same cards)
+- High Card (highest single card)
+
+Good luck! 🍀`);
+            }
+        }
+
+        // Initialize game when page loads
+        let game;
+        document.addEventListener('DOMContentLoaded', function() {
+            game = new StripPokerGame();
+        });
+    </script>
+</body>
+</html>

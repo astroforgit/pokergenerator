@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
-vite-editor/node_modules/
+**/node_modules/
+package-lock.json
+*.bin
+scan_output.txt
 
 # Build output
 vite-editor/dist/

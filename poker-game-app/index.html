@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strip Poker - Atari Style</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .game-container {
+            max-width: 1200px;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 10px 20px;
+            background: #607D8B;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .back-button:hover {
+            background: #455A64;
+        }
+
+        .game-status {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status-section {
+            background: rgba(76, 175, 80, 0.2);
+            padding: 10px;
+            border-radius: 5px;
+            margin: 5px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .cards-area {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .player-hand {
+            text-align: center;
+            margin: 10px;
+        }
+
+        .card {
+            display: inline-block;
+            width: 60px;
+            height: 84px;
+            border: 2px solid #fff;
+            border-radius: 5px;
+            margin: 2px;
+            background: #fff;
+            color: #000;
+            font-size: 12px;
+            text-align: center;
+            line-height: 80px;
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: scale(1.1);
+        }
+
+        .card.red {
+            color: #e74c3c;
+        }
+
+        .card.black {
+            color: #2c3e50;
+        }
+
+        .opponent-area {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .opponent-avatar {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            border: 3px solid #fff;
+        }
+
+        .clothing-strip {
+            display: flex;
+            justify-content: center;
+            margin: 10px 0;
+        }
+
+        .clothing-item {
+            width: 40px;
+            height: 40px;
+            margin: 5px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            position: relative;
+            transition: opacity 0.5s ease;
+        }
+
+        .clothing-item.clothed {
+            background: #4CAF50;
+        }
+
+        .clothing-item.stripped {
+            background: transparent;
+            opacity: 0.3;
+        }
+
+        .betting-area {
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(76, 175, 80, 0.1);
+            border-radius: 10px;
+        }
+
+        .bet-amount {
+            font-size: 24px;
+            margin: 10px 0;
+            color: #4CAF50;
+        }
+
+        .betting-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .bet-btn {
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+        }
+
+        .bet-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .call-btn {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .raise-btn {
+            background: #FF9800;
+            color: white;
+        }
+
+        .drop-btn {
+            background: #f44336;
+            color: white;
+        }
+
+        .stay-btn {
+            background: #2196F3;
+            color: white;
+        }
+
+        .dialogue-area {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            min-height: 120px;
+            border-left: 4px solid #4CAF50;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            line-height: 1.5;
+        }
+
+        .opponent-dialogue {
+            font-style: italic;
+            color: #ffeb3b;
+            font-size: 16px;
+        }
+
+        .game-message {
+            text-align: center;
+            font-size: 18px;
+            color: #4CAF50;
+            margin: 10px 0;
+        }
+
+        .controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .control-btn {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #607D8B;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+        }
+
+        .control-btn:hover {
+            background: #455A64;
+        }
+
+        .pot-display {
+            font-size: 20px;
+            color: #FFEB3B;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .game-container {
+                padding: 10px;
+            }
+            
+            .card {
+                width: 50px;
+                height: 70px;
+                line-height: 66px;
+                font-size: 10px;
+            }
+            
+            .opponent-avatar {
+                width: 100px;
+                height: 100px;
+                font-size: 32px;
+            }
+            
+            .back-button {
+                position: relative;
+                top: 0;
+                left: 0;
+                margin-bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <a href="../vite-editor/" class="back-button">← Back to Editor</a>
+        
+        <div class="header">
+            <h1>🎮 STRIP POKER - ATARI STYLE 🎮</h1>
+            <p>Based on reverse-engineered Atari 8-bit BASIC code</p>
+        </div>
+
+        <div class="game-status">
+            <div class="status-section" style="text-align: left;">
+                <h3 id="player-label">YOU</h3>
+                <p>Cash: $<span id="player-pot">100</span></p>
+            </div>
+            <div class="status-section" style="background: rgba(255, 235, 59, 0.1); border-color: #FFEB3B;">
+                <h3>THE POT</h3>
+                <p class="pot-display">$<span id="total-pot">0</span></p>
+                <p style="font-size: 12px; margin-top: 5px;">Round: <span id="round-number">1</span></p>
+            </div>
+            <div class="status-section" style="text-align: right;">
+                <h3 id="opponent-label-status">OPPONENT</h3>
+                <p>Cash: $<span id="opponent-pot">100</span></p>
+            </div>
+        </div>
+
+        <div class="opponent-area">
+            <h2 id="opponent-name">Suzy</h2>
+            <div class="opponent-avatar" id="opponent-avatar">👩</div>
+            <div class="clothing-strip" id="clothing-strip">
+                <div class="clothing-item clothed" id="top" title="Top"></div>
+                <div class="clothing-item clothed" id="pants" title="Pants"></div>
+                <div class="clothing-item clothed" id="undies" title="Undies"></div>
+            </div>
+        </div>
+
+        <div class="cards-area">
+            <div class="player-hand">
+                <h3>Your Hand</h3>
+                <div id="player-cards"></div>
+            </div>
+            <div class="player-hand">
+                <h3>Opponent's Hand</h3>
+                <div id="opponent-cards"></div>
+            </div>
+        </div>
+
+        <div class="dialogue-area">
+            <div class="opponent-dialogue" id="dialogue-text">
+                Ready to play some poker? Don't bet more than you can afford to lose!
+            </div>
+        </div>
+
+        <div class="betting-area">
+            <div class="game-message" id="game-message"></div>
+            <div class="bet-amount">
+                Current Bet: $<span id="current-bet">0</span>
+            </div>
+            <div class="betting-buttons">
+                <button class="bet-btn call-btn" onclick="game.call()">CALL</button>
+                <div style="display: flex; gap: 5px;">
+                    <select id="raise-amount" class="raise-select">
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                        <option value="15">15</option>
+                        <option value="20">20</option>
+                        <option value="25">25</option>
+                    </select>
+                    <button class="bet-btn raise-btn" onclick="game.raise()">RAISE</button>
+                </div>
+                <button class="bet-btn stay-btn" onclick="game.stay()">STAY</button>
+                <button class="bet-btn drop-btn" onclick="game.drop()">DROP</button>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="control-btn" onclick="game.newGame()">New Game</button>
+            <button class="control-btn" onclick="game.newRound()">New Round</button>
+            <button class="control-btn" onclick="game.showRules()">Rules</button>
+        </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+</body>
+</html>

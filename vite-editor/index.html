@@ -12,6 +12,7 @@
           <span id="status" class="status">Loading...</span>
       </div>
       <div>
+          <a href="http://localhost:5174/" target="_blank" style="padding: 10px 20px; background: #FF5722; color: white; text-decoration: none; border-radius: 5px; margin-right: 10px; display: inline-block;">🎮 Play Strip Poker</a>
           <button id="helpBtn" class="primary" title="Show help and documentation">❓ Help</button>
           <button id="loadAtrBtn" title="Load a different ATR file">📁 Load Different ATR</button>
           <button id="saveAtrBtn" class="primary">💾 Download Modified ATR</button>
@@ -53,11 +54,35 @@
                 <!-- Image Import Section -->
                 <div id="importSection" class="tool-section" style="display:none;">
                     <h3>Import Image</h3>
-                    <canvas id="importCanvas" width="160" height="140" style="border: 1px solid #555; max-width: 800px; image-rendering: crisp-edges;"></canvas>
+
+                    <!-- Result Preview (Top) - 160x140 with 4 colors -->
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #4CAF50;">📊 Result Preview (160×140, 4 colors)</h4>
+                        <canvas id="resultCanvas" width="160" height="140" style="border: 2px solid #4CAF50; image-rendering: pixelated; width: 640px; height: 560px; background: #000;"></canvas>
+                        <p style="font-size: 0.75rem; color: #888; margin: 5px 0;">This is how the image will look in the game</p>
+                    </div>
+
+                    <!-- Original Image Preview (Bottom) - Full resolution with crop tool -->
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #FF9800;">🖼️ Original Image</h4>
+
+                        <!-- Resize Mode Buttons -->
+                        <div style="margin-bottom: 10px;">
+                            <button id="autoFillBtn" class="primary" style="padding: 5px 15px; font-size: 0.85rem;">Auto Fill</button>
+                            <button id="fitBtn" style="padding: 5px 15px; font-size: 0.85rem;">Fit (Show All)</button>
+                            <button id="manualCropBtn" style="padding: 5px 15px; font-size: 0.85rem;">Manual Crop</button>
+                        </div>
+
+                        <div style="position: relative; display: inline-block; border: 2px solid #FF9800;">
+                            <canvas id="originalCanvas" style="max-width: 800px; max-height: 600px; cursor: crosshair; background: #000;"></canvas>
+                            <div id="cropBox" style="position: absolute; border: 2px dashed #4CAF50; background: rgba(76, 175, 80, 0.1); pointer-events: none; display: none;"></div>
+                        </div>
+                        <p style="font-size: 0.75rem; color: #888; margin: 5px 0;" id="cropModeHelp">Auto Fill: Fills frame, may crop edges</p>
+                    </div>
 
                     <!-- Image Adjustments -->
                     <div style="margin: 15px 0; padding: 15px; background: #2a2a2a; border-radius: 5px; max-width: 800px;">
-                        <h4 style="margin: 0 0 10px 0; font-size: 0.9rem;">Image Adjustments</h4>
+                        <h4 style="margin: 0 0 10px 0; font-size: 0.9rem;">⚙️ Image Adjustments</h4>
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
                             <div>
@@ -94,19 +119,13 @@
                             </div>
                         </div>
 
-                        <button id="resetAdjustmentsBtn" style="padding: 5px 10px; font-size: 0.8rem;">Reset All</button>
+                        <button id="resetAdjustmentsBtn" style="padding: 5px 10px; font-size: 0.8rem;">🔄 Reset All</button>
                     </div>
 
                     <div class="toolbar">
-                        <button id="cropBtn">Crop to 160×140</button>
-                        <button id="resizeFitBtn">Resize (Fit)</button>
-                        <button id="resizeFillBtn">Resize (Fill)</button>
-                        <button id="applyImportBtn" class="primary">Apply to Canvas</button>
-                        <button id="cancelImportBtn">Cancel</button>
+                        <button id="applyImportBtn" class="primary">✓ Apply to Canvas</button>
+                        <button id="cancelImportBtn">✗ Cancel</button>
                     </div>
-                    <p style="font-size: 0.75rem; color: #888; margin: 5px 0;">
-                        Adjust settings above, then click Apply to transfer to main canvas
-                    </p>
                 </div>
 
                 <!-- Drawing Tools -->
@@ -187,6 +206,7 @@
                 <ul style="margin-left:20px;">
                     <li>Click "📷 Import PNG" button</li>
                     <li>Select a PNG file from your computer</li>
+                    <li><strong>Image Processing:</strong> The image is automatically cropped to preserve the 160:140 aspect ratio (8:7). Adjustments are applied to the original full-resolution image before scaling down for best quality.</li>
                     <li><strong>Adjust Settings:</strong>
                         <ul style="margin-left:20px;">
                             <li><strong>Brightness:</strong> -100 to +100 (makes image darker/lighter)</li>
@@ -202,8 +222,8 @@
                             <li><strong>None:</strong> Sharp, no dithering (nearest color)</li>
                         </ul>
                     </li>
-                    <li><strong>Resize Mode:</strong> Choose "Fit" (keeps aspect ratio) or "Fill" (stretches to fill)</li>
-                    <li>Click "Apply to Canvas" when satisfied with preview</li>
+                    <li>Preview updates in real-time as you adjust settings</li>
+                    <li>Click "✓ Apply to Canvas" when satisfied with preview</li>
                 </ul>
 
                 <p><strong>Save Changes:</strong> Click "✓ Update File in Disk" to save your edits to memory.</p>
